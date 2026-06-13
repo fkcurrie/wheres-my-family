@@ -8,7 +8,6 @@ import {
   Switch,
   Platform,
   Alert,
-  Dimensions,
   TextInput,
   Share,
   AppState,
@@ -21,16 +20,12 @@ import * as Battery from 'expo-battery';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  MapPin,
   ShieldAlert,
   Battery as BatteryIcon,
   RefreshCw,
-  User,
-  Bell,
   Navigation,
   Info,
   Share2,
-  Activity,
 } from 'lucide-react-native';
 // Remove static expo-observe import to prevent native module crashes on standard Expo Go
 
@@ -478,6 +473,7 @@ function MainApp() {
     // Poll every 10 seconds stably without interval teardowns on GPS updates
     const interval = setInterval(fetchFamilyLocations, 10000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userName]); // Only re-run if userName changes, keeping the timer stable
 
   // --- Auto-center map on first coordinate load ---
@@ -761,7 +757,7 @@ function MainApp() {
           'Onboarding Completed'
         );
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Could not save your name.');
     }
   };
@@ -928,6 +924,7 @@ function MainApp() {
   };
 
   // --- Toggle Panic Alarm ---
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const triggerPanic = () => {
     const newState = !panicActive;
     setPanicActive(newState);
