@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  Switch, 
-  Platform, 
-  Alert, 
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  Platform,
+  Alert,
   Dimensions,
   TextInput,
   Share,
   AppState,
-  Vibration
+  Vibration,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
@@ -20,17 +20,17 @@ import * as TaskManager from 'expo-task-manager';
 import * as Battery from 'expo-battery';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  MapPin, 
-  ShieldAlert, 
-  Battery as BatteryIcon, 
-  RefreshCw, 
-  User, 
-  Bell, 
-  Navigation, 
+import {
+  MapPin,
+  ShieldAlert,
+  Battery as BatteryIcon,
+  RefreshCw,
+  User,
+  Bell,
+  Navigation,
   Info,
   Share2,
-  Activity
+  Activity,
 } from 'lucide-react-native';
 // Remove static expo-observe import to prevent native module crashes on standard Expo Go
 
@@ -40,7 +40,12 @@ const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c
 
 // --- Global Diagnostic Triage Logger ---
 const addDiagnosticLog = async (msg: string) => {
-  const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
   const formatted = `[${timestamp}] ${msg}`;
   console.log(formatted);
   try {
@@ -59,12 +64,14 @@ const addDiagnosticLog = async (msg: string) => {
 // --- Haversine Formula Helper for Distance ---
 const getDistanceInMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 3958.8; // Radius of the Earth in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
@@ -76,7 +83,7 @@ const getRealBatteryAndActivity = async () => {
   try {
     const level = await Battery.getBatteryLevelAsync();
     batteryLevel = level >= 0 ? Math.round(level * 100) : 100;
-    
+
     const state = await Battery.getBatteryStateAsync();
     isCharging = state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL;
   } catch (err) {
@@ -105,36 +112,41 @@ const getWeatherAndAlerts = async (latitude: number, longitude: number) => {
     if (json && json.current) {
       const temp = Math.round(json.current.temperature_2m);
       const code = json.current.weather_code;
-      
+
       let emoji = '☀️';
       let desc = 'Clear';
       let isSevere = false;
-      
-      if (code === 0) { emoji = '☀️'; desc = 'Clear sky'; }
-      else if ([1, 2, 3].includes(code)) { emoji = '⛅'; desc = 'Partly cloudy'; }
-      else if ([45, 48].includes(code)) { emoji = '🌫️'; desc = 'Foggy'; }
-      else if ([51, 53, 55].includes(code)) { emoji = '🌧️'; desc = 'Drizzle'; }
-      else if ([61, 63, 65].includes(code)) {
+
+      if (code === 0) {
+        emoji = '☀️';
+        desc = 'Clear sky';
+      } else if ([1, 2, 3].includes(code)) {
+        emoji = '⛅';
+        desc = 'Partly cloudy';
+      } else if ([45, 48].includes(code)) {
+        emoji = '🌫️';
+        desc = 'Foggy';
+      } else if ([51, 53, 55].includes(code)) {
+        emoji = '🌧️';
+        desc = 'Drizzle';
+      } else if ([61, 63, 65].includes(code)) {
         emoji = '🌧️';
         desc = code === 65 ? 'Heavy rain' : 'Rain';
         if (code === 65) isSevere = true;
-      }
-      else if ([71, 73, 75].includes(code)) {
+      } else if ([71, 73, 75].includes(code)) {
         emoji = '❄️';
         desc = code === 75 ? 'Heavy snow' : 'Snow';
         if (code === 75) isSevere = true;
-      }
-      else if ([80, 81, 82].includes(code)) {
+      } else if ([80, 81, 82].includes(code)) {
         emoji = '🌦️';
         desc = code === 82 ? 'Torrential showers' : 'Showers';
         if (code === 82) isSevere = true;
-      }
-      else if ([95, 96, 99].includes(code)) {
+      } else if ([95, 96, 99].includes(code)) {
         emoji = '⛈️';
         desc = 'Thunderstorms';
         isSevere = true;
       }
-      
+
       return { temp, emoji, desc, isSevere };
     }
   } catch (err) {
@@ -152,11 +164,22 @@ let lastWeatherValue: any = null;
 const getWeatherAndAlertsCached = async (latitude: number, longitude: number) => {
   const now = Date.now();
   // Reuse weather data if it was fetched within last 30 minutes and we have not moved more than 2 miles
-  if (lastWeatherValue && (now - lastWeatherTime < 30 * 60 * 1000) && lastWeatherLat !== null && lastWeatherLng !== null) {
+  if (
+    lastWeatherValue &&
+    now - lastWeatherTime < 30 * 60 * 1000 &&
+    lastWeatherLat !== null &&
+    lastWeatherLng !== null
+  ) {
     const dist = getDistanceInMiles(latitude, longitude, lastWeatherLat, lastWeatherLng);
     if (dist < 2.0) {
-      console.log('[Weather Optimizer]: Reusing cached weather (moved ' + dist.toFixed(2) + ' miles). Saved network query.');
-      await addDiagnosticLog(`[Weather Cache] Cache hit: using ${lastWeatherValue.temp}°C, ${lastWeatherValue.desc} (moved ${dist.toFixed(2)} mi)`);
+      console.log(
+        '[Weather Optimizer]: Reusing cached weather (moved ' +
+          dist.toFixed(2) +
+          ' miles). Saved network query.'
+      );
+      await addDiagnosticLog(
+        `[Weather Cache] Cache hit: using ${lastWeatherValue.temp}°C, ${lastWeatherValue.desc} (moved ${dist.toFixed(2)} mi)`
+      );
       return lastWeatherValue;
     }
   }
@@ -179,29 +202,29 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
   try {
     const rawTrail = await AsyncStorage.getItem('user_trail');
     let trail = rawTrail ? JSON.parse(rawTrail) : [];
-    
+
     const now = Date.now();
-    
+
     // Avoid spamming identical coordinates: only add if we moved at least 0.005 miles (~8 meters) or 5 minutes elapsed
     if (trail.length > 0) {
       const lastPoint = trail[trail.length - 1];
       const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      if (dist >= 0.005 || (now - lastPoint.timestamp > 5 * 60 * 1000)) {
+      if (dist >= 0.005 || now - lastPoint.timestamp > 5 * 60 * 1000) {
         trail.push({ latitude, longitude, timestamp: now });
       }
     } else {
       trail.push({ latitude, longitude, timestamp: now });
     }
-    
+
     // Filter out points older than 24 hours
     const limit = now - 24 * 60 * 60 * 1000;
     trail = trail.filter((pt: any) => pt.timestamp > limit);
-    
+
     // Cap at 30 points to conserve space on MantleDB payload
     if (trail.length > 30) {
       trail = trail.slice(trail.length - 30);
     }
-    
+
     await AsyncStorage.setItem('user_trail', JSON.stringify(trail));
     return trail;
   } catch (err) {
@@ -211,17 +234,34 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
 };
 
 // --- Helper to publish location directly to MantleDB ---
-const publishLocation = async (name: string, latitude: number, longitude: number, status: string = 'Active', extraData: any = {}) => {
+const publishLocation = async (
+  name: string,
+  latitude: number,
+  longitude: number,
+  status: string = 'Active',
+  extraData: any = {}
+) => {
   try {
     const now = Date.now();
     const isForced = ['App Started', 'Manual Refresh', 'Onboarding Completed'].includes(status);
-    
+
     // Throttling: Skip publishing if stationary (< 50 meters / ~0.03 miles) and updated within last 15 minutes
-    if (!isForced && lastPublishedLat !== null && lastPublishedLng !== null && (now - lastPublishedTime < 15 * 60 * 1000)) {
+    if (
+      !isForced &&
+      lastPublishedLat !== null &&
+      lastPublishedLng !== null &&
+      now - lastPublishedTime < 15 * 60 * 1000
+    ) {
       const dist = getDistanceInMiles(latitude, longitude, lastPublishedLat, lastPublishedLng);
       if (dist < 0.03) {
-        console.log('[Battery Optimizer]: Stationary (moved ' + dist.toFixed(4) + ' miles). Skipping MantleDB update to conserve power.');
-        await addDiagnosticLog(`[Sync Idle] Stationary (moved ${dist.toFixed(4)} mi). Bypassed publish.`);
+        console.log(
+          '[Battery Optimizer]: Stationary (moved ' +
+            dist.toFixed(4) +
+            ' miles). Skipping MantleDB update to conserve power.'
+        );
+        await addDiagnosticLog(
+          `[Sync Idle] Stationary (moved ${dist.toFixed(4)} mi). Bypassed publish.`
+        );
         return;
       }
     }
@@ -232,7 +272,7 @@ const publishLocation = async (name: string, latitude: number, longitude: number
     lastPublishedTime = now;
 
     const info = await getRealBatteryAndActivity();
-    
+
     // Fetch live weather context if coordinates are available
     let weatherInfo = null;
     try {
@@ -259,33 +299,45 @@ const publishLocation = async (name: string, latitude: number, longitude: number
         charging: info.isCharging,
         deviceStatus: info.deviceStatus,
         updatedAt: Date.now(),
-        ...(weatherInfo ? {
-          weatherTemp: weatherInfo.temp,
-          weatherEmoji: weatherInfo.emoji,
-          weatherDesc: weatherInfo.desc,
-          weatherIsSevere: weatherInfo.isSevere
-        } : {}),
+        ...(weatherInfo
+          ? {
+              weatherTemp: weatherInfo.temp,
+              weatherEmoji: weatherInfo.emoji,
+              weatherDesc: weatherInfo.desc,
+              weatherIsSevere: weatherInfo.isSevere,
+            }
+          : {}),
         ...(localTrail && localTrail.length > 0 ? { trail: localTrail } : {}),
-        ...extraData
-      }
+        ...extraData,
+      },
     };
 
     await fetch(MANTLE_DB_URL, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'X-Mantle-Key': MANTLE_KEY
+        'X-Mantle-Key': MANTLE_KEY,
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
-    console.log('[Background Sync]: Successfully published location for', name, 'Battery:', info.batteryLevel, 'Status:', info.deviceStatus);
-    await addDiagnosticLog(`[Sync Success] Coords: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (${status}). Bat: ${info.batteryLevel}%`);
+    console.log(
+      '[Background Sync]: Successfully published location for',
+      name,
+      'Battery:',
+      info.batteryLevel,
+      'Status:',
+      info.deviceStatus
+    );
+    await addDiagnosticLog(
+      `[Sync Success] Coords: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (${status}). Bat: ${info.batteryLevel}%`
+    );
   } catch (err) {
     console.error('[Background Sync Error]:', err);
-    await addDiagnosticLog(`[Sync Error] Failed to publish location: ${err instanceof Error ? err.message : String(err)}`);
+    await addDiagnosticLog(
+      `[Sync Error] Failed to publish location: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 };
-
 
 // --- Background Task Definition ---
 TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
@@ -303,13 +355,22 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
       try {
         const savedName = await AsyncStorage.getItem('user_name');
         if (savedName) {
-          await publishLocation(savedName, coords.latitude, coords.longitude, 'Background Tracking');
+          await publishLocation(
+            savedName,
+            coords.latitude,
+            coords.longitude,
+            'Background Tracking'
+          );
         } else {
-          await addDiagnosticLog(`[Background Task Warning] Name not set in AsyncStorage, skipping publish.`);
+          await addDiagnosticLog(
+            `[Background Task Warning] Name not set in AsyncStorage, skipping publish.`
+          );
         }
       } catch (err) {
         console.error('[Background Sync task-level error]:', err);
-        await addDiagnosticLog(`[Background Sync Error] task-level: ${err instanceof Error ? err.message : String(err)}`);
+        await addDiagnosticLog(
+          `[Background Sync Error] task-level: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
   }
@@ -423,12 +484,15 @@ function MainApp() {
   useEffect(() => {
     if (userLocation && !hasCenteredOnce && mapRef.current) {
       setHasCenteredOnce(true);
-      mapRef.current.animateToRegion({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.03,
-      }, 1000);
+      mapRef.current.animateToRegion(
+        {
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        },
+        1000
+      );
     }
   }, [userLocation, hasCenteredOnce]);
 
@@ -444,14 +508,21 @@ function MainApp() {
             {
               accuracy: Location.Accuracy.Balanced,
               timeInterval: 60000, // Update every 1 minute
-              distanceInterval: 10,  // Or every 10 meters
+              distanceInterval: 10, // Or every 10 meters
             },
             async (loc) => {
               setUserLocation(loc);
               const saved = userNameRef.current; // Fast 100% in-memory read (bypasses slow disk I/O)
-              await addDiagnosticLog(`[Foreground Watcher] GPS updated: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`);
+              await addDiagnosticLog(
+                `[Foreground Watcher] GPS updated: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`
+              );
               if (saved) {
-                await publishLocation(saved, loc.coords.latitude, loc.coords.longitude, 'Auto foreground update');
+                await publishLocation(
+                  saved,
+                  loc.coords.latitude,
+                  loc.coords.longitude,
+                  'Auto foreground update'
+                );
               }
             }
           );
@@ -460,7 +531,9 @@ function MainApp() {
         }
       } catch (err) {
         console.warn('Error setting up foreground watcher:', err);
-        await addDiagnosticLog(`[Foreground Watcher Error] Start failed: ${err instanceof Error ? err.message : String(err)}`);
+        await addDiagnosticLog(
+          `[Foreground Watcher Error] Start failed: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     };
 
@@ -494,23 +567,26 @@ function MainApp() {
       }
     } catch (e) {
       console.warn(e);
-      await addDiagnosticLog(`[App Mount Error] Failed to load name: ${e instanceof Error ? e.message : String(e)}`);
+      await addDiagnosticLog(
+        `[App Mount Error] Failed to load name: ${e instanceof Error ? e.message : String(e)}`
+      );
     } finally {
       setIsLoadingUser(false);
     }
   };
 
-
-
   // --- Center Map on User's Location ---
   const centerOnUser = () => {
     if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.03,
-      }, 1000);
+      mapRef.current.animateToRegion(
+        {
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        },
+        1000
+      );
     }
   };
 
@@ -531,16 +607,16 @@ function MainApp() {
           weatherEmoji: member.weatherEmoji,
           weatherDesc: member.weatherDesc,
           weatherIsSevere: member.weatherIsSevere,
-          nudgeRequested: true
-        }
+          nudgeRequested: true,
+        },
       };
       await fetch(MANTLE_DB_URL, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'X-Mantle-Key': MANTLE_KEY
+          'X-Mantle-Key': MANTLE_KEY,
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       Alert.alert('Nudge Sent 📳', `Sent a silent vibration trigger to ${member.name}!`);
     } catch (e) {
@@ -554,43 +630,41 @@ function MainApp() {
     try {
       const res = await fetch(MANTLE_DB_URL, {
         headers: {
-          'X-Mantle-Key': MANTLE_KEY
-        }
+          'X-Mantle-Key': MANTLE_KEY,
+        },
       });
       const data = await res.json();
       if (data && !data.error) {
-
-
         // Check for local nudges
         if (userName && data[userName] && data[userName].nudgeRequested === true) {
           Vibration.vibrate([0, 500, 200, 500]);
           await addDiagnosticLog(`[Nudge] RECEIVED a nudge vibration request from family!`);
           Alert.alert('📳 Family Nudge!', 'Someone in your family is nudging you to check in!');
-          
+
           // Clear nudge state
           const clearedUser = {
             ...data[userName],
-            nudgeRequested: false
+            nudgeRequested: false,
           };
           fetch(MANTLE_DB_URL, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              'X-Mantle-Key': MANTLE_KEY
+              'X-Mantle-Key': MANTLE_KEY,
             },
             body: JSON.stringify({
-              [userName]: clearedUser
-            })
-          }).catch(err => console.warn('Error clearing nudge flag:', err));
+              [userName]: clearedUser,
+            }),
+          }).catch((err) => console.warn('Error clearing nudge flag:', err));
         }
 
         const currentUserLoc = userLocationRef.current; // Read from Ref to prevent stale closures
 
         const fetchedMembers = Object.keys(data)
-          .filter(key => !key.startsWith('_'))
+          .filter((key) => !key.startsWith('_'))
           .map((key) => {
             const m = data[key];
-            
+
             let distanceStr = '0.1 mi';
             if (currentUserLoc && m.latitude !== undefined && m.longitude !== undefined) {
               const dist = getDistanceInMiles(
@@ -613,7 +687,9 @@ function MainApp() {
             let displayStatus = m.status || 'Active';
 
             const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
-            const colorIdx = Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % colors.length;
+            const colorIdx =
+              Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) %
+              colors.length;
 
             return {
               id: `fetched-${key}`,
@@ -634,13 +710,17 @@ function MainApp() {
               weatherIsSevere: m.weatherIsSevere,
               nudgeRequested: m.nudgeRequested || false,
               updatedAt: m.updatedAt,
-              trail: m.trail || []
+              trail: m.trail || [],
             };
           });
 
         // Filter out mock members that match a real member's name (case-insensitive) or match the current user
-        const realNames = fetchedMembers.map(fm => fm.name.toLowerCase());
-        const remainingMock = INITIAL_FAMILY.filter(m => !realNames.includes(m.name.toLowerCase()) && m.name.toLowerCase() !== userName?.toLowerCase());
+        const realNames = fetchedMembers.map((fm) => fm.name.toLowerCase());
+        const remainingMock = INITIAL_FAMILY.filter(
+          (m) =>
+            !realNames.includes(m.name.toLowerCase()) &&
+            m.name.toLowerCase() !== userName?.toLowerCase()
+        );
 
         // Keep current user in family list
         const filteredFetched = fetchedMembers;
@@ -649,12 +729,18 @@ function MainApp() {
 
         // Update the last updated time using the local device's clock
         const now = new Date();
-        const localTimeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const localTimeString = now.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
         setLastUpdatedTime(localTimeString);
       }
     } catch (e) {
       console.warn('Error fetching family locations:', e);
-      await addDiagnosticLog(`[Poll Error] Failed to sync family locations: ${e instanceof Error ? e.message : String(e)}`);
+      await addDiagnosticLog(
+        `[Poll Error] Failed to sync family locations: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   };
 
@@ -668,7 +754,12 @@ function MainApp() {
       await AsyncStorage.setItem('user_name', trimmed);
       setUserName(trimmed);
       if (userLocation) {
-        await publishLocation(trimmed, userLocation.coords.latitude, userLocation.coords.longitude, 'Onboarding Completed');
+        await publishLocation(
+          trimmed,
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          'Onboarding Completed'
+        );
       }
     } catch (e) {
       Alert.alert('Error', 'Could not save your name.');
@@ -698,7 +789,9 @@ function MainApp() {
 
       // Fetch initial single location
       if (foreground.granted) {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
         setUserLocation(loc);
         const saved = await AsyncStorage.getItem('user_name');
         if (saved) {
@@ -707,7 +800,9 @@ function MainApp() {
       }
     } catch (e) {
       console.warn(e);
-      await addDiagnosticLog(`[App Mount Error] checkTrackingState failed: ${e instanceof Error ? e.message : String(e)}`);
+      await addDiagnosticLog(
+        `[App Mount Error] checkTrackingState failed: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   };
 
@@ -715,12 +810,17 @@ function MainApp() {
   const toggleBackgroundTracking = async (value: boolean) => {
     try {
       if (value) {
-        await addDiagnosticLog(`[Background Sync] Requesting foreground/background GPS permissions...`);
+        await addDiagnosticLog(
+          `[Background Sync] Requesting foreground/background GPS permissions...`
+        );
         // Request Permissions
         const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
         if (fgStatus !== 'granted') {
           await addDiagnosticLog(`[Background Sync Error] Foreground permission denied.`);
-          Alert.alert('Permission Denied', 'Foreground location permission is required to track location.');
+          Alert.alert(
+            'Permission Denied',
+            'Foreground location permission is required to track location.'
+          );
           return;
         }
 
@@ -738,14 +838,14 @@ function MainApp() {
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
           accuracy: Location.Accuracy.Balanced,
           timeInterval: 60000, // 1 minute
-          distanceInterval: 15,  // 15 meters
+          distanceInterval: 15, // 15 meters
           deferredUpdatesInterval: 60000, // batch updates every 1 minute
           deferredUpdatesDistance: 15, // batch updates every 15 meters
           pausesUpdatesAutomatically: true, // hibernates on iOS when still
           activityType: Location.ActivityType.AutomotiveNavigation, // iOS automotive profiles
           foregroundService: {
             notificationTitle: "Where's my family!! Active",
-            notificationBody: "Sharing your live location with your family in the background.",
+            notificationBody: 'Sharing your live location with your family in the background.',
             notificationColor: '#e11d48',
           },
           showsBackgroundLocationIndicator: true,
@@ -753,8 +853,13 @@ function MainApp() {
 
         setIsBackgroundTracking(true);
         setPermissionStatus('Granted (Background Active)');
-        await addDiagnosticLog(`[Background Sync] REGISTERED successfully. Interval: 1 min, dist: 15m.`);
-        Alert.alert('Background Sharing Enabled', 'Your location is now being tracked and shared in the background. It will persist across app closed states and device reboots.');
+        await addDiagnosticLog(
+          `[Background Sync] REGISTERED successfully. Interval: 1 min, dist: 15m.`
+        );
+        Alert.alert(
+          'Background Sharing Enabled',
+          'Your location is now being tracked and shared in the background. It will persist across app closed states and device reboots.'
+        );
       } else {
         // Stop tracking task
         const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
@@ -767,7 +872,9 @@ function MainApp() {
         Alert.alert('Background Sharing Disabled', 'Persistent tracking stopped.');
       }
     } catch (error: any) {
-      await addDiagnosticLog(`[Background Sync Error] Toggle failed: ${error.message || String(error)}`);
+      await addDiagnosticLog(
+        `[Background Sync Error] Toggle failed: ${error.message || String(error)}`
+      );
       Alert.alert('Error', error.message || 'An error occurred setting up background task.');
       console.error(error);
     }
@@ -782,10 +889,17 @@ function MainApp() {
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         setUserLocation(loc);
-        await addDiagnosticLog(`[Manual Refresh] Coords fetched: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`);
+        await addDiagnosticLog(
+          `[Manual Refresh] Coords fetched: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`
+        );
 
         if (userName) {
-          await publishLocation(userName, loc.coords.latitude, loc.coords.longitude, 'Manual Refresh');
+          await publishLocation(
+            userName,
+            loc.coords.latitude,
+            loc.coords.longitude,
+            'Manual Refresh'
+          );
         }
 
         // Pull down other family members immediately
@@ -840,10 +954,16 @@ function MainApp() {
       <View style={[styles.window, { justifyContent: 'center', padding: 24 }]}>
         <StatusBar style="light" />
         <View style={styles.onboardingCard}>
-          <ShieldAlert color="#f43f5e" size={54} style={{ alignSelf: 'center', marginBottom: 16 }} />
+          <ShieldAlert
+            color="#f43f5e"
+            size={54}
+            style={{ alignSelf: 'center', marginBottom: 16 }}
+          />
           <Text style={styles.onboardingTitle}>Where's my family!!</Text>
-          <Text style={styles.onboardingSubtitle}>Identify who is using this phone to share and view locations with your family.</Text>
-          
+          <Text style={styles.onboardingSubtitle}>
+            Identify who is using this phone to share and view locations with your family.
+          </Text>
+
           <Text style={styles.inputLabel}>Who is this?</Text>
           <TextInput
             style={styles.onboardingInput}
@@ -853,7 +973,7 @@ function MainApp() {
             placeholderTextColor="#64748b"
             autoFocus
           />
-          
+
           <TouchableOpacity style={styles.onboardingButton} onPress={handleSaveName}>
             <Text style={styles.onboardingButtonText}>Save & Start Tracking</Text>
           </TouchableOpacity>
@@ -865,7 +985,7 @@ function MainApp() {
   return (
     <View style={[styles.window, panicActive && styles.panicWindow]}>
       <StatusBar style="light" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
@@ -873,7 +993,11 @@ function MainApp() {
           <Text style={styles.headerTitle}>Where's my family!!</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.shareIconHeader} onPress={shareAppInvite} accessibilityLabel="Share app instructions">
+          <TouchableOpacity
+            style={styles.shareIconHeader}
+            onPress={shareAppInvite}
+            accessibilityLabel="Share app instructions"
+          >
             <Share2 color="#fff" size={20} />
           </TouchableOpacity>
         </View>
@@ -916,8 +1040,14 @@ function MainApp() {
                 pinColor="#f43f5e"
               />
               {familyMembers.map((member) => {
-                const memberLat = member.latitude !== undefined ? member.latitude : (userLocation?.coords.latitude || 43.6532) + (member.latOffset / 5000);
-                const memberLng = member.longitude !== undefined ? member.longitude : (userLocation?.coords.longitude || -79.3832) + (member.lngOffset / 5000);
+                const memberLat =
+                  member.latitude !== undefined
+                    ? member.latitude
+                    : (userLocation?.coords.latitude || 43.6532) + member.latOffset / 5000;
+                const memberLng =
+                  member.longitude !== undefined
+                    ? member.longitude
+                    : (userLocation?.coords.longitude || -79.3832) + member.lngOffset / 5000;
                 return (
                   <Marker
                     key={member.id}
@@ -932,31 +1062,32 @@ function MainApp() {
                 );
               })}
 
-              {showTrails && familyMembers.map((member) => {
-                if (!member.trail || member.trail.length < 2) {
-                  return null;
-                }
-                const trailCoords = member.trail.map((pt: any) => ({
-                  latitude: pt.latitude,
-                  longitude: pt.longitude
-                }));
-                
-                return (
-                  <Polyline
-                    key={`trail-${member.id}`}
-                    coordinates={trailCoords}
-                    strokeColor={member.color}
-                    strokeWidth={4}
-                    lineDashPattern={[6, 6]}
-                  />
-                );
-              })}
+              {showTrails &&
+                familyMembers.map((member) => {
+                  if (!member.trail || member.trail.length < 2) {
+                    return null;
+                  }
+                  const trailCoords = member.trail.map((pt: any) => ({
+                    latitude: pt.latitude,
+                    longitude: pt.longitude,
+                  }));
+
+                  return (
+                    <Polyline
+                      key={`trail-${member.id}`}
+                      coordinates={trailCoords}
+                      strokeColor={member.color}
+                      strokeWidth={4}
+                      lineDashPattern={[6, 6]}
+                    />
+                  );
+                })}
             </MapView>
 
             {/* Center On Me Floating Button Overlay */}
             {userLocation && (
-              <TouchableOpacity 
-                style={styles.centerButton} 
+              <TouchableOpacity
+                style={styles.centerButton}
                 onPress={centerOnUser}
                 activeOpacity={0.7}
                 accessibilityLabel="Center on my location"
@@ -969,19 +1100,36 @@ function MainApp() {
         </View>
 
         {/* Severe Weather Alert Banner */}
-        {familyMembers.some(m => m.weatherIsSevere) && (
-          <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', borderWidth: 1, borderColor: '#ef4444', borderRadius: 12, padding: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {familyMembers.some((m) => m.weatherIsSevere) && (
+          <View
+            style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.15)',
+              borderWidth: 1,
+              borderColor: '#ef4444',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
             <Text style={{ fontSize: 20 }}>⚠️</Text>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#f87171', fontWeight: 'bold', fontSize: 14 }}>Severe Weather Alert</Text>
+              <Text style={{ color: '#f87171', fontWeight: 'bold', fontSize: 14 }}>
+                Severe Weather Alert
+              </Text>
               <Text style={{ color: '#fca5a5', fontSize: 12, marginTop: 2 }}>
-                {familyMembers.filter(m => m.weatherIsSevere).map(m => m.name).join(' & ')} is currently experiencing hazardous conditions ({familyMembers.find(m => m.weatherIsSevere)?.weatherDesc || 'Thunderstorms'}).
+                {familyMembers
+                  .filter((m) => m.weatherIsSevere)
+                  .map((m) => m.name)
+                  .join(' & ')}{' '}
+                is currently experiencing hazardous conditions (
+                {familyMembers.find((m) => m.weatherIsSevere)?.weatherDesc || 'Thunderstorms'}).
               </Text>
             </View>
           </View>
         )}
-
-
 
         {/* Family Cards List */}
         <View style={styles.sectionHeaderRow}>
@@ -998,31 +1146,62 @@ function MainApp() {
                 <View style={[styles.colorIndicator, { backgroundColor: member.color }]} />
                 <View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.familyName}>{member.name === userName ? `${member.name} (You)` : member.name}</Text>
+                    <Text style={styles.familyName}>
+                      {member.name === userName ? `${member.name} (You)` : member.name}
+                    </Text>
                     {member.weatherTemp !== undefined && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12, gap: 4 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: '#0f172a',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 12,
+                          gap: 4,
+                        }}
+                      >
                         <Text style={{ fontSize: 12 }}>{member.weatherEmoji}</Text>
-                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{member.weatherTemp}°</Text>
+                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+                          {member.weatherTemp}°
+                        </Text>
                       </View>
                     )}
                     {member.weatherIsSevere && (
-                      <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>⚠️ SEVERE</Text>
+                      <View
+                        style={{
+                          backgroundColor: '#ef4444',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 12,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>
+                          ⚠️ SEVERE
+                        </Text>
                       </View>
                     )}
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                    <View style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: member.deviceStatus === 'Active' ? '#10b981' : '#64748b',
-                    }} />
-                    <Text style={{
-                      color: member.deviceStatus === 'Active' ? '#34d399' : '#94a3b8',
-                      fontSize: 11,
-                      fontWeight: '700',
-                    }}>{member.deviceStatus || 'Active'}</Text>
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}
+                  >
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: member.deviceStatus === 'Active' ? '#10b981' : '#64748b',
+                      }}
+                    />
+                    <Text
+                      style={{
+                        color: member.deviceStatus === 'Active' ? '#34d399' : '#94a3b8',
+                        fontSize: 11,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {member.deviceStatus || 'Active'}
+                    </Text>
                     <Text style={{ color: '#475569', fontSize: 11 }}>•</Text>
                     <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
                   </View>
@@ -1033,14 +1212,14 @@ function MainApp() {
                 <Text style={styles.familyLastSeen}>Seen {member.lastSeen}</Text>
               </View>
             </View>
-            
+
             <View style={styles.familyDivider} />
 
             <View style={styles.familyFooter}>
               <View style={styles.batteryRow}>
-                <BatteryIcon 
-                  color={member.battery < 20 ? "#ef4444" : member.charging ? "#10b981" : "#9ca3af"} 
-                  size={16} 
+                <BatteryIcon
+                  color={member.battery < 20 ? '#ef4444' : member.charging ? '#10b981' : '#9ca3af'}
+                  size={16}
                 />
                 <Text style={[styles.batteryText, member.battery < 20 && styles.lowBatteryText]}>
                   {member.battery}% {member.charging ? '(Charging)' : ''}
@@ -1048,16 +1227,21 @@ function MainApp() {
               </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {member.name !== userName && (
-                  <TouchableOpacity 
-                    style={[styles.pingButton, { backgroundColor: '#3b82f6' }]} 
+                  <TouchableOpacity
+                    style={[styles.pingButton, { backgroundColor: '#3b82f6' }]}
                     onPress={() => handleNudgeMember(member)}
                   >
                     <Text style={styles.pingText}>📳 Nudge</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity 
-                  style={styles.pingButton} 
-                  onPress={() => Alert.alert(`Ping Sent`, `Requested immediate location update from ${member.name}.`)}
+                <TouchableOpacity
+                  style={styles.pingButton}
+                  onPress={() =>
+                    Alert.alert(
+                      `Ping Sent`,
+                      `Requested immediate location update from ${member.name}.`
+                    )
+                  }
                 >
                   <Text style={styles.pingText}>Ping Device</Text>
                 </TouchableOpacity>
@@ -1083,13 +1267,18 @@ function MainApp() {
               thumbColor={isBackgroundTracking ? '#34d399' : '#9ca3af'}
             />
           </View>
-          
+
           <View style={styles.divider} />
-          
+
           <View style={styles.statusDetailRow}>
             <Info color="#9ca3af" size={16} />
             <Text style={styles.statusText}>
-              Status: <Text style={{fontWeight: 'bold', color: isBackgroundTracking ? '#10b981' : '#f59e0b'}}>{permissionStatus}</Text>
+              Status:{' '}
+              <Text
+                style={{ fontWeight: 'bold', color: isBackgroundTracking ? '#10b981' : '#f59e0b' }}
+              >
+                {permissionStatus}
+              </Text>
             </Text>
           </View>
 
@@ -1097,13 +1286,14 @@ function MainApp() {
             <View style={styles.coordsBlock}>
               <Text style={styles.coordsHeader}>My Coordinates ({userName})</Text>
               <Text style={styles.coordsBody}>
-                Lat: {userLocation.coords.latitude.toFixed(6)} | Lng: {userLocation.coords.longitude.toFixed(6)}
+                Lat: {userLocation.coords.latitude.toFixed(6)} | Lng:{' '}
+                {userLocation.coords.longitude.toFixed(6)}
               </Text>
             </View>
           )}
 
-          <TouchableOpacity 
-            style={[styles.refreshButton, updatingLocation && styles.disabledButton]} 
+          <TouchableOpacity
+            style={[styles.refreshButton, updatingLocation && styles.disabledButton]}
             onPress={refreshLocation}
             disabled={updatingLocation}
           >
@@ -1129,10 +1319,10 @@ function MainApp() {
             </TouchableOpacity>
           </View>
         </View>
-        
+
         {/* Triage Diagnostics Button */}
-        <TouchableOpacity 
-          style={[styles.triageToggleButton, showTriageConsole && styles.triageActiveButton]} 
+        <TouchableOpacity
+          style={[styles.triageToggleButton, showTriageConsole && styles.triageActiveButton]}
           onPress={() => setShowTriageConsole(!showTriageConsole)}
           activeOpacity={0.8}
         >
@@ -1152,16 +1342,20 @@ function MainApp() {
               <Text style={styles.triageDeviceText}>Local Node Diagnostics</Text>
             </View>
 
-            <ScrollView 
-              style={styles.triageLogsContainer} 
+            <ScrollView
+              style={styles.triageLogsContainer}
               nestedScrollEnabled={true}
               showsVerticalScrollIndicator={true}
             >
               {diagnosticLogs.length === 0 ? (
-                <Text style={styles.triageNoLogsText}>No logs found. Perform some actions to populate.</Text>
+                <Text style={styles.triageNoLogsText}>
+                  No logs found. Perform some actions to populate.
+                </Text>
               ) : (
                 diagnosticLogs.map((log, idx) => (
-                  <Text key={`log-${idx}`} style={styles.triageLogLine}>{log}</Text>
+                  <Text key={`log-${idx}`} style={styles.triageLogLine}>
+                    {log}
+                  </Text>
                 ))
               )}
             </ScrollView>
@@ -1170,10 +1364,16 @@ function MainApp() {
               <TouchableOpacity style={styles.triageActionButton} onPress={loadDiagnosticLogs}>
                 <Text style={styles.triageActionText}>🔄 Refresh</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.triageActionButton, styles.triageClearButton]} onPress={clearDiagnosticLogs}>
+              <TouchableOpacity
+                style={[styles.triageActionButton, styles.triageClearButton]}
+                onPress={clearDiagnosticLogs}
+              >
                 <Text style={styles.triageActionText}>🧹 Clear Logs</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.triageActionButton, styles.triageShareButton]} onPress={shareDiagnosticLogs}>
+              <TouchableOpacity
+                style={[styles.triageActionButton, styles.triageShareButton]}
+                onPress={shareDiagnosticLogs}
+              >
                 <Text style={styles.triageActionText}>📋 Share Logs</Text>
               </TouchableOpacity>
             </View>
@@ -1185,7 +1385,7 @@ function MainApp() {
           <Text style={styles.footerText}>Where's my family!! • v1.2.0</Text>
           <Text style={styles.footerSubText}>Build 112 • Commit e81aa3b</Text>
         </View>
-        
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -1609,59 +1809,59 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  onboardingCard: { 
-    backgroundColor: '#1e293b', 
-    borderRadius: 16, 
-    padding: 24, 
-    shadowColor: '#000', 
-    shadowOpacity: 0.2, 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowRadius: 12, 
-    elevation: 5 
+  onboardingCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 5,
   },
-  onboardingTitle: { 
-    color: '#fff', 
-    fontSize: 24, 
-    fontWeight: '800', 
-    textAlign: 'center', 
-    marginBottom: 8 
+  onboardingTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  onboardingSubtitle: { 
-    color: '#94a3b8', 
-    fontSize: 14, 
-    textAlign: 'center', 
-    lineHeight: 20, 
-    marginBottom: 24 
+  onboardingSubtitle: {
+    color: '#94a3b8',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
   },
-  inputLabel: { 
-    color: '#38bdf8', 
-    fontSize: 12, 
-    fontWeight: '700', 
-    textTransform: 'uppercase', 
-    letterSpacing: 0.5, 
-    marginBottom: 8 
+  inputLabel: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  onboardingInput: { 
-    backgroundColor: '#0f172a', 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    borderColor: '#334155', 
-    color: '#fff', 
-    fontSize: 16, 
-    padding: 12, 
-    marginBottom: 20 
+  onboardingInput: {
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    color: '#fff',
+    fontSize: 16,
+    padding: 12,
+    marginBottom: 20,
   },
-  onboardingButton: { 
-    backgroundColor: '#f43f5e', 
-    borderRadius: 8, 
-    paddingVertical: 14, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  onboardingButton: {
+    backgroundColor: '#f43f5e',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  onboardingButtonText: { 
-    color: '#fff', 
-    fontSize: 15, 
-    fontWeight: '700' 
+  onboardingButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   footerBlock: {
     alignItems: 'center',
