@@ -11,9 +11,7 @@
       "bundleIdentifier": "ca.sfle.wheresmyfamily",
       "appleTeamId": "LSV2MNUNZ8",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location"
-        ],
+        "UIBackgroundModes": ["location"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },

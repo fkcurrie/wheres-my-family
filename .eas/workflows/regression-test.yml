@@ -16,6 +16,8 @@ jobs:
         run: npx expo doctor
       - name: Run TypeScript Compile Verification
         run: npm run typecheck
+      - name: Run ESLint Code Quality Checks
+        run: npm run lint
 
   build_android:
     name: Build Android Preview APK
