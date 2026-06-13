@@ -633,7 +633,8 @@ function MainApp() {
               weatherDesc: m.weatherDesc,
               weatherIsSevere: m.weatherIsSevere,
               nudgeRequested: m.nudgeRequested || false,
-              updatedAt: m.updatedAt
+              updatedAt: m.updatedAt,
+              trail: m.trail || []
             };
           });
 
