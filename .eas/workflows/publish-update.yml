@@ -1,0 +1,16 @@
+name: Publish OTA Update
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        type: string
+        required: true
+        description: 'Description of the update changes'
+        default: 'Update JS bundle'
+jobs:
+  publish_update:
+    name: Publish Production Update
+    type: update
+    params:
+      channel: production
+      message: ${{ inputs.message }}

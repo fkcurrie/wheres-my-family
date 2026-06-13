@@ -1,0 +1,34 @@
+name: Regression, Quality & Automated Build
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+jobs:
+  validate:
+    name: Verify Types & Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Run Configuration Diagnostics
+        run: npx expo doctor
+      - name: Run TypeScript Compile Verification
+        run: npm run typecheck
+
+  build_android:
+    name: Build Android Preview APK
+    needs: [validate]
+    type: build
+    params:
+      platform: android
+      profile: preview
+
+  build_ios:
+    name: Build iOS Production IPA
+    needs: [validate]
+    type: build
+    params:
+      platform: ios
+      profile: production
