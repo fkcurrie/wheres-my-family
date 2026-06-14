@@ -533,19 +533,23 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
           // Pre-cache all but the latest background coordinate into AsyncStorage trail
           for (let i = 0; i < sortedLocations.length - 1; i++) {
             const loc = sortedLocations[i];
-            await updateAndGetLocalTrail(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
+            if (loc && loc.coords) {
+              await updateAndGetLocalTrail(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
+            }
           }
 
           // Publish the absolute latest coordinate to also push the accumulated trail to MantleDB
           const latestLoc = sortedLocations[sortedLocations.length - 1];
-          await publishLocation(
-            savedName,
-            latestLoc.coords.latitude,
-            latestLoc.coords.longitude,
-            'Background Tracking',
-            {},
-            latestLoc.timestamp
-          );
+          if (latestLoc && latestLoc.coords) {
+            await publishLocation(
+              savedName,
+              latestLoc.coords.latitude,
+              latestLoc.coords.longitude,
+              'Background Tracking',
+              {},
+              latestLoc.timestamp
+            );
+          }
         } else {
           await addDiagnosticLog(
             `[Background Task Warning] Name not set in AsyncStorage, skipping publish.`
@@ -653,7 +657,10 @@ function MainApp() {
       let changed = false;
       
       for (const member of familyMembers) {
-        if (!member.trail || member.trail.length < 2) {
+        const rawTrail = member.trail || [];
+        const cleanTrail = rawTrail.filter((pt: any) => pt && typeof pt.latitude === 'number' && typeof pt.longitude === 'number');
+
+        if (cleanTrail.length < 2) {
           if (snappedTrails[member.id]) {
             delete newSnappedTrails[member.id];
             delete lastTrailHashes.current[member.id];
@@ -663,14 +670,14 @@ function MainApp() {
         }
         
         // Create a unique hash/string of the raw trail coordinates
-        const hash = member.trail.map((pt: any) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const hash = cleanTrail.map((pt: any) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
         const prevHash = lastTrailHashes.current[member.id];
         
         if (hash !== prevHash) {
           lastTrailHashes.current[member.id] = hash;
           
           // Fetch snapped coordinates from OSRM map matching API
-          const snapped = await fetchSnappedTrail(member.trail);
+          const snapped = await fetchSnappedTrail(cleanTrail);
           if (active) {
             newSnappedTrails[member.id] = snapped;
             changed = true;
