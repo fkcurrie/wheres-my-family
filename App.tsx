@@ -365,27 +365,28 @@ const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoord[]> =>
 };
 
 // --- Local cache of the user's historical coordinates for 24h trail ---
-const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
+const updateAndGetLocalTrail = async (latitude: number, longitude: number, timestamp?: number) => {
   try {
     const rawTrail = await AsyncStorage.getItem('user_trail');
     let trail = rawTrail ? JSON.parse(rawTrail) : [];
 
     const now = Date.now();
+    const recordTime = timestamp || now;
 
     // Avoid spamming identical coordinates: log high-density (30s) while moving, and low-density (5m) when stationary
     if (trail.length > 0) {
       const lastPoint = trail[trail.length - 1];
       const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      const timeElapsed = now - lastPoint.timestamp;
+      const timeElapsed = recordTime - lastPoint.timestamp;
 
       const isMoving = dist >= 0.005; // ~8 meters movement
       const shouldLog = (isMoving && timeElapsed >= 30 * 1000) || (timeElapsed >= 5 * 60 * 1000);
 
       if (shouldLog) {
-        trail.push({ latitude, longitude, timestamp: now });
+        trail.push({ latitude, longitude, timestamp: recordTime });
       }
     } else {
-      trail.push({ latitude, longitude, timestamp: now });
+      trail.push({ latitude, longitude, timestamp: recordTime });
     }
 
     // Filter out points older than 24 hours
@@ -412,7 +413,8 @@ const publishLocation = async (
   latitude: number,
   longitude: number,
   status: string = 'Active',
-  extraData: any = {}
+  extraData: any = {},
+  timestamp?: number
 ) => {
   try {
     const now = Date.now();
@@ -457,7 +459,7 @@ const publishLocation = async (
     // Get updated historical trail
     let localTrail: any[] = [];
     try {
-      localTrail = await updateAndGetLocalTrail(latitude, longitude);
+      localTrail = await updateAndGetLocalTrail(latitude, longitude, timestamp);
     } catch (e) {
       console.warn('[Local trail fetch bypassed]:', e);
     }
@@ -471,7 +473,7 @@ const publishLocation = async (
         battery: info.batteryLevel,
         charging: info.isCharging,
         deviceStatus: info.deviceStatus,
-        updatedAt: Date.now(),
+        updatedAt: timestamp || Date.now(),
         ...(weatherInfo
           ? {
               weatherTemp: weatherInfo.temp,
@@ -521,18 +523,28 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
   }
   if (data) {
     const { locations } = data as { locations: Location.LocationObject[] };
-    if (locations[0]) {
-      const coords = locations[0].coords;
-      console.log('[Background Location Update]:', coords);
-      await addDiagnosticLog(`[Background Task] OS triggered GPS tick.`);
+    if (locations && locations.length > 0) {
+      // Sort background coordinates chronologically to ensure perfect trail integration
+      const sortedLocations = [...locations].sort((a, b) => a.timestamp - b.timestamp);
+      
       try {
         const savedName = await AsyncStorage.getItem('user_name');
         if (savedName) {
+          // Pre-cache all but the latest background coordinate into AsyncStorage trail
+          for (let i = 0; i < sortedLocations.length - 1; i++) {
+            const loc = sortedLocations[i];
+            await updateAndGetLocalTrail(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
+          }
+
+          // Publish the absolute latest coordinate to also push the accumulated trail to MantleDB
+          const latestLoc = sortedLocations[sortedLocations.length - 1];
           await publishLocation(
             savedName,
-            coords.latitude,
-            coords.longitude,
-            'Background Tracking'
+            latestLoc.coords.latitude,
+            latestLoc.coords.longitude,
+            'Background Tracking',
+            {},
+            latestLoc.timestamp
           );
         } else {
           await addDiagnosticLog(
@@ -741,7 +753,9 @@ function MainApp() {
                   saved,
                   loc.coords.latitude,
                   loc.coords.longitude,
-                  'Auto foreground update'
+                  'Auto foreground update',
+                  {},
+                  loc.timestamp
                 );
               }
             }
@@ -978,7 +992,9 @@ function MainApp() {
           trimmed,
           userLocation.coords.latitude,
           userLocation.coords.longitude,
-          'Onboarding Completed'
+          'Onboarding Completed',
+          {},
+          userLocation.timestamp
         );
       }
     } catch {
@@ -1015,7 +1031,14 @@ function MainApp() {
         setUserLocation(loc);
         const saved = await AsyncStorage.getItem('user_name');
         if (saved) {
-          await publishLocation(saved, loc.coords.latitude, loc.coords.longitude, 'App Started');
+          await publishLocation(
+            saved,
+            loc.coords.latitude,
+            loc.coords.longitude,
+            'App Started',
+            {},
+            loc.timestamp
+          );
         }
       }
     } catch (e) {
@@ -1118,7 +1141,9 @@ function MainApp() {
             userName,
             loc.coords.latitude,
             loc.coords.longitude,
-            'Manual Refresh'
+            'Manual Refresh',
+            {},
+            loc.timestamp
           );
         }
 
