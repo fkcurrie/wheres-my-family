@@ -71,6 +71,59 @@ const getDistanceInMiles = (lat1: number, lon1: number, lat2: number, lon2: numb
   return R * c;
 };
 
+// --- Gradient Trail Helpers ---
+// Interpolate color from Emerald Green (most recent) to Vibrant Red (approaching 24h old)
+const interpolateTrailColor = (ageMs: number): { solid: string; glow: string } => {
+  const limit = 24 * 60 * 60 * 1000; // 24 hours in ms
+  // Clamp ratio between 0 and 1
+  const ratio = Math.max(0, Math.min(1, ageMs / limit));
+  
+  // Emerald Green: rgb(34, 197, 94) -> R=34, G=197, B=94
+  // Vibrant Red: rgb(239, 68, 68) -> R=239, G=68, B=68
+  const r = Math.round(34 + (239 - 34) * ratio);
+  const g = Math.round(197 + (68 - 197) * ratio);
+  const b = Math.round(94 + (68 - 94) * ratio);
+  
+  return {
+    solid: `rgb(${r}, ${g}, ${b})`,
+    glow: `rgba(${r}, ${g}, ${b}, 0.25)`
+  };
+};
+
+// Retrieve the timestamp for a given coordinate by finding the closest point in the raw trail (since OSRM matching strips timestamps)
+const getCoordinateTimestamp = (
+  coord: { latitude: number; longitude: number },
+  rawTrail: any[] | undefined,
+  index: number,
+  total: number
+): number => {
+  // If the raw trail point at the same index exists and has the same length, we can assume a direct 1-to-1 match
+  if (rawTrail && rawTrail[index] && rawTrail[index].timestamp && rawTrail.length === total) {
+    return rawTrail[index].timestamp;
+  }
+  
+  // Otherwise, match based on physical distance to the closest raw coordinate
+  if (rawTrail && rawTrail.length > 0) {
+    let minDistance = Infinity;
+    let closestTimestamp = rawTrail[0].timestamp || Date.now();
+    for (const pt of rawTrail) {
+      if (!pt.timestamp) continue;
+      // Use squared distance for speed (no Math.sqrt needed)
+      const dist = Math.pow(pt.latitude - coord.latitude, 2) + Math.pow(pt.longitude - coord.longitude, 2);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestTimestamp = pt.timestamp;
+      }
+    }
+    return closestTimestamp;
+  }
+  
+  // Fallback to relative index ratio if rawTrail is missing timestamps or empty
+  const limit = 24 * 60 * 60 * 1000;
+  const ratio = index / (total > 1 ? total - 1 : 1);
+  return Date.now() - (1 - ratio) * limit;
+};
+
 // --- Helper to get real battery percentage, charging state, and App active status ---
 const getRealBatteryAndActivity = async () => {
   let batteryLevel = 100;
@@ -295,11 +348,11 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
 
     const now = Date.now();
 
-    // Avoid spamming identical coordinates: only add if we moved at least 0.015 miles (~24 meters) or 5 minutes elapsed
+    // Avoid spamming identical coordinates: only add if we moved at least 0.005 miles (~8 meters) or 30 seconds elapsed
     if (trail.length > 0) {
       const lastPoint = trail[trail.length - 1];
       const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      if (dist >= 0.015 || now - lastPoint.timestamp > 5 * 60 * 1000) {
+      if (dist >= 0.005 || now - lastPoint.timestamp > 30 * 1000) {
         trail.push({ latitude, longitude, timestamp: now });
       }
     } else {
@@ -310,9 +363,9 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
     const limit = now - 24 * 60 * 60 * 1000;
     trail = trail.filter((pt: any) => pt.timestamp > limit);
 
-    // Cap at 30 points to conserve space on MantleDB payload
-    if (trail.length > 30) {
-      trail = trail.slice(trail.length - 30);
+    // Cap at 120 points to allow 1 hour of rich high-density driving or walk paths on MantleDB payload
+    if (trail.length > 120) {
+      trail = trail.slice(trail.length - 120);
     }
 
     await AsyncStorage.setItem('user_trail', JSON.stringify(trail));
@@ -644,7 +697,7 @@ function MainApp() {
           subscription = await Location.watchPositionAsync(
             {
               accuracy: Location.Accuracy.High,
-              timeInterval: 60000, // Update every 1 minute
+              timeInterval: 30000, // Update every 30 seconds
               distanceInterval: 10, // Or every 10 meters
             },
             async (loc) => {
@@ -974,9 +1027,9 @@ function MainApp() {
         // Start tracking task with high-efficiency battery profiles
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 60000, // 1 minute
+          timeInterval: 30000, // 30 seconds
           distanceInterval: 15, // 15 meters
-          deferredUpdatesInterval: 60000, // batch updates every 1 minute
+          deferredUpdatesInterval: 30000, // batch updates every 30 seconds
           deferredUpdatesDistance: 15, // batch updates every 15 meters
           pausesUpdatesAutomatically: true, // hibernates on iOS when still
           activityType: Location.ActivityType.AutomotiveNavigation, // iOS automotive profiles
@@ -991,7 +1044,7 @@ function MainApp() {
         setIsBackgroundTracking(true);
         setPermissionStatus('Granted (Background Active)');
         await addDiagnosticLog(
-          `[Background Sync] REGISTERED successfully. Interval: 1 min, dist: 15m.`
+          `[Background Sync] REGISTERED successfully. Interval: 30 sec, dist: 15m.`
         );
         Alert.alert(
           'Background Sharing Enabled',
@@ -1232,29 +1285,48 @@ function MainApp() {
                     longitude: pt.longitude,
                   }));
 
-                  // Helper for translucent outer glow color (e.g. hex #3b82f6 -> rgba glow)
-                  const glowColor = member.color && member.color.startsWith('#') 
-                    ? `${member.color}33` 
-                    : 'rgba(148, 163, 184, 0.3)';
+                  if (coordinates.length < 2) {
+                    return null;
+                  }
+
+                  // Render individual segments with color-graded polylines
+                  const segments: React.ReactNode[] = [];
+                  for (let i = 0; i < coordinates.length - 1; i++) {
+                    const pt1 = coordinates[i];
+                    const pt2 = coordinates[i + 1];
+                    
+                    const ts1 = getCoordinateTimestamp(pt1, member.trail, i, coordinates.length);
+                    const ts2 = getCoordinateTimestamp(pt2, member.trail, i + 1, coordinates.length);
+                    const avgTimestamp = (ts1 + ts2) / 2;
+                    const ageMs = Math.max(0, Date.now() - avgTimestamp);
+                    
+                    const colors = interpolateTrailColor(ageMs);
+
+                    segments.push(
+                      <React.Fragment key={`trail-segment-${member.id}-${i}`}>
+                        {/* Subtle outer glow border for depth */}
+                        <Polyline
+                          coordinates={[pt1, pt2]}
+                          strokeColor={colors.glow}
+                          strokeWidth={8}
+                          lineJoin="round"
+                          lineCap="round"
+                        />
+                        {/* Inner smooth, solid sleek path */}
+                        <Polyline
+                          coordinates={[pt1, pt2]}
+                          strokeColor={colors.solid}
+                          strokeWidth={3}
+                          lineJoin="round"
+                          lineCap="round"
+                        />
+                      </React.Fragment>
+                    );
+                  }
 
                   return (
                     <React.Fragment key={`trail-group-${member.id}`}>
-                      {/* Subtle outer glow border for depth */}
-                      <Polyline
-                        coordinates={coordinates}
-                        strokeColor={glowColor}
-                        strokeWidth={8}
-                        lineJoin="round"
-                        lineCap="round"
-                      />
-                      {/* Inner smooth, solid sleek path */}
-                      <Polyline
-                        coordinates={coordinates}
-                        strokeColor={member.color}
-                        strokeWidth={3}
-                        lineJoin="round"
-                        lineCap="round"
-                      />
+                      {segments}
                     </React.Fragment>
                   );
                 })}
