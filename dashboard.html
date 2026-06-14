@@ -584,6 +584,8 @@
       let trailLines = {};
       let secondsLeft = 10;
       let currentData = {};
+      let snappedTrails = {};
+      let lastTrailHashes = {};
 
       // Logging helper
       function logToMapConsole(msg, isError = false) {
@@ -824,6 +826,285 @@
         document.getElementById('system-status').style.color = 'var(--accent-emerald)';
       }
 
+      // --- Perpendicular Distance Helper for RDP Simplification ---
+      function getPerpendicularDistance(pt, lineStart, lineEnd) {
+        const dx = lineEnd.longitude - lineStart.longitude;
+        const dy = lineEnd.latitude - lineStart.latitude;
+        
+        if (dx === 0 && dy === 0) {
+          return Math.sqrt(
+            Math.pow(pt.latitude - lineStart.latitude, 2) +
+            Math.pow(pt.longitude - lineStart.longitude, 2)
+          );
+        }
+        
+        const t = ((pt.longitude - lineStart.longitude) * dx + (pt.latitude - lineStart.latitude) * dy) / (dx * dx + dy * dy);
+        
+        let nearestX = lineStart.longitude + t * dx;
+        let nearestY = lineStart.latitude + t * dy;
+        
+        if (t < 0) {
+          nearestX = lineStart.longitude;
+          nearestY = lineStart.latitude;
+        } else if (t > 1) {
+          nearestX = lineEnd.longitude;
+          nearestY = lineEnd.latitude;
+        }
+        
+        return Math.sqrt(
+          Math.pow(pt.longitude - nearestX, 2) +
+          Math.pow(pt.latitude - nearestY, 2)
+        );
+      }
+
+      // --- Ramer-Douglas-Peucker (RDP) Simplification Algorithm ---
+      function simplifyRDP(points, epsilon) {
+        if (points.length <= 2) return points;
+        
+        let dmax = 0;
+        let index = 0;
+        const end = points.length - 1;
+        
+        for (let i = 1; i < end; i++) {
+          const d = getPerpendicularDistance(points[i], points[0], points[end]);
+          if (d > dmax) {
+            index = i;
+            dmax = d;
+          }
+        }
+        
+        if (dmax > epsilon) {
+          const results1 = simplifyRDP(points.slice(0, index + 1), epsilon);
+          const results2 = simplifyRDP(points.slice(index), epsilon);
+          return results1.slice(0, results1.length - 1).concat(results2);
+        } else {
+          return [points[0], points[end]];
+        }
+      }
+
+      // --- Fetch Snapped Trail Coordinates from OSRM Map-Matching or Routing API ---
+      async function fetchSnappedTrail(points) {
+        if (points.length < 2) return points;
+        
+        // Simplify points first to keep the tracepoint count low, preventing URL length issues
+        // 0.00008 (~8 meters) tolerance filters out raw GPS jitter while preserving key turn points
+        const simplified = simplifyRDP(points, 0.00008);
+        
+        // OSRM expects coordinates in [longitude,latitude] format separated by semicolons
+        const coordsString = simplified.map(pt => `${pt.longitude},${pt.latitude}`).join(';');
+        
+        // 1. Try OSRM Routing API first: It ALWAYS guarantees a continuous, connected route
+        const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+        
+        try {
+          const response = await fetch(routeUrl);
+          const data = await response.json();
+          
+          if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
+            const routeGeometry = data.routes[0].geometry;
+            if (routeGeometry && routeGeometry.coordinates) {
+              return routeGeometry.coordinates.map(coord => ({
+                latitude: coord[1],
+                longitude: coord[0]
+              }));
+            }
+          }
+          logToMapConsole(`[OSRM Route Info]: Routing not possible for some coordinates. Trying fallback matching.`);
+        } catch (err) {
+          logToMapConsole(`[OSRM Route Error]: Failed to fetch routed trail: ${err.message}`, true);
+        }
+        
+        // 2. Fallback to OSRM Map-Matching API if routing fails (or is unavailable)
+        const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+        try {
+          const response = await fetch(matchUrl);
+          const data = await response.json();
+          
+          if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
+            const matchGeometry = data.matchings[0].geometry;
+            if (matchGeometry && matchGeometry.coordinates) {
+              return matchGeometry.coordinates.map(coord => ({
+                latitude: coord[1],
+                longitude: coord[0]
+              }));
+            }
+          }
+        } catch (err) {
+          logToMapConsole(`[OSRM Match Error]: Failed to fetch snapped trail: ${err.message}`, true);
+        }
+        
+        // 3. Graceful fallback to the simplified raw trail if both APIs fail
+        return simplified;
+      }
+
+      // --- Gradient Trail Helpers ---
+      // Interpolate color from Emerald Green (most recent) to Vibrant Red (approaching 24h old)
+      function interpolateTrailColor(ageMs) {
+        const limit = 24 * 60 * 60 * 1000; // 24 hours in ms
+        const ratio = Math.max(0, Math.min(1, ageMs / limit));
+        
+        // Emerald Green: rgb(34, 197, 94) -> R=34, G=197, B=94
+        // Vibrant Red: rgb(239, 68, 68) -> R=239, G=68, B=68
+        const r = Math.round(34 + (239 - 34) * ratio);
+        const g = Math.round(197 + (68 - 197) * ratio);
+        const b = Math.round(94 + (68 - 94) * ratio);
+        
+        return {
+          solid: `rgb(${r}, ${g}, ${b})`,
+          glow: `rgba(${r}, ${g}, ${b}, 0.25)`
+        };
+      }
+
+      // Retrieve the timestamp for a given coordinate by finding the closest point in the raw trail
+      function getCoordinateTimestamp(coord, rawTrail, index, total) {
+        if (rawTrail && rawTrail[index] && rawTrail[index].timestamp && rawTrail.length === total) {
+          return rawTrail[index].timestamp;
+        }
+        
+        if (rawTrail && rawTrail.length > 0) {
+          let minDistance = Infinity;
+          let closestTimestamp = rawTrail[0].timestamp || Date.now();
+          for (const pt of rawTrail) {
+            if (!pt.timestamp) continue;
+            const dist = Math.pow(pt.latitude - coord.latitude, 2) + Math.pow(pt.longitude - coord.longitude, 2);
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestTimestamp = pt.timestamp;
+            }
+          }
+          return closestTimestamp;
+        }
+        
+        return Date.now();
+      }
+
+      // Build FeatureCollection of color-graded 2-point LineStrings
+      function buildGradedTrailGeoJSON(coordinates, rawTrail) {
+        const features = [];
+        for (let i = 0; i < coordinates.length - 1; i++) {
+          const pt1 = coordinates[i];
+          const pt2 = coordinates[i + 1];
+          
+          const ts1 = getCoordinateTimestamp(pt1, rawTrail, i, coordinates.length);
+          const ts2 = getCoordinateTimestamp(pt2, rawTrail, i + 1, coordinates.length);
+          const avgTimestamp = (ts1 + ts2) / 2;
+          const ageMs = Math.max(0, Date.now() - avgTimestamp);
+          
+          const colors = interpolateTrailColor(ageMs);
+          
+          features.push({
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [pt1.longitude, pt1.latitude],
+                [pt2.longitude, pt2.latitude]
+              ]
+            },
+            properties: {
+              solidColor: colors.solid,
+              glowColor: colors.glow
+            }
+          });
+        }
+        
+        return {
+          type: 'FeatureCollection',
+          features: features
+        };
+      }
+
+      // Remove a member's trail from the map completely
+      function removeMemberTrailFromMap(name) {
+        if (!map) return;
+        const sourceId = `trail-source-${name}`;
+        const glowLayerId = `trail-glow-layer-${name}`;
+        const solidLayerId = `trail-solid-layer-${name}`;
+        
+        if (map.getLayer(glowLayerId)) map.removeLayer(glowLayerId);
+        if (map.getLayer(solidLayerId)) map.removeLayer(solidLayerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        
+        delete lastTrailHashes[name];
+        delete snappedTrails[name];
+      }
+
+      // Asynchronously handle OSRM fetching and rendering with color gradients
+      async function updateMemberTrailOnMap(name, rawTrail) {
+        if (!map) return;
+        if (!rawTrail || rawTrail.length < 2) {
+          removeMemberTrailFromMap(name);
+          return;
+        }
+
+        const hash = rawTrail.map(pt => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const prevHash = lastTrailHashes[name];
+
+        let snapped;
+        if (hash !== prevHash) {
+          lastTrailHashes[name] = hash;
+          logToMapConsole(`[OSRM]: Fetching snapped coordinates for ${name}...`);
+          snapped = await fetchSnappedTrail(rawTrail);
+          snappedTrails[name] = snapped;
+        } else {
+          snapped = snappedTrails[name] || rawTrail;
+        }
+
+        const geojson = buildGradedTrailGeoJSON(snapped, rawTrail);
+        const sourceId = `trail-source-${name}`;
+        const glowLayerId = `trail-glow-layer-${name}`;
+        const solidLayerId = `trail-solid-layer-${name}`;
+
+        const drawOrUpdateSource = () => {
+          const source = map.getSource(sourceId);
+          if (source) {
+            source.setData(geojson);
+          } else {
+            map.addSource(sourceId, {
+              type: 'geojson',
+              data: geojson
+            });
+
+            // Outer subtle glow layer
+            map.addLayer({
+              id: glowLayerId,
+              type: 'line',
+              source: sourceId,
+              layout: {
+                'line-join': 'round',
+                'line-cap': 'round',
+              },
+              paint: {
+                'line-color': ['get', 'glowColor'],
+                'line-width': 8,
+                'line-blur': 1
+              },
+            });
+
+            // Inner solid, sharp layer
+            map.addLayer({
+              id: solidLayerId,
+              type: 'line',
+              source: sourceId,
+              layout: {
+                'line-join': 'round',
+                'line-cap': 'round',
+              },
+              paint: {
+                'line-color': ['get', 'solidColor'],
+                'line-width': 3
+              },
+            });
+          }
+        };
+
+        if (map.isStyleLoaded()) {
+          drawOrUpdateSource();
+        } else {
+          map.once('style.load', drawOrUpdateSource);
+        }
+      }
+
       // MapLibre Marker and Polyline update logic
       function updateMapMarkers(points) {
         if (!map) return;
@@ -862,83 +1143,8 @@
             markers[markerKey] = marker;
           }
 
-          // Draw Trails inside MapLibre source layers
-          if (m.trail && m.trail.length > 1) {
-            const trailCoords = m.trail.map((pt) => [pt.longitude, pt.latitude]);
-            const sourceId = `trail-source-${name}`;
-            const layerId = `trail-layer-${name}`;
-
-            // MapLibre can only add sources/layers after style is fully loaded
-            if (map.isStyleLoaded()) {
-              const source = map.getSource(sourceId);
-              if (source) {
-                source.setData({
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: trailCoords,
-                  },
-                });
-              } else {
-                map.addSource(sourceId, {
-                  type: 'geojson',
-                  data: {
-                    type: 'Feature',
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: trailCoords,
-                    },
-                  },
-                });
-
-                map.addLayer({
-                  id: layerId,
-                  type: 'line',
-                  source: sourceId,
-                  layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round',
-                  },
-                  paint: {
-                    'line-color': color,
-                    'line-width': 4,
-                    'line-dasharray': [2, 2],
-                  },
-                });
-              }
-            } else {
-              // style hasn't loaded yet, register a one-off listener
-              map.once('style.load', () => {
-                if (!map.getSource(sourceId)) {
-                  map.addSource(sourceId, {
-                    type: 'geojson',
-                    data: {
-                      type: 'Feature',
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: trailCoords,
-                      },
-                    },
-                  });
-
-                  map.addLayer({
-                    id: layerId,
-                    type: 'line',
-                    source: sourceId,
-                    layout: {
-                      'line-join': 'round',
-                      'line-cap': 'round',
-                    },
-                    paint: {
-                      'line-color': color,
-                      'line-width': 4,
-                      'line-dasharray': [2, 2],
-                    },
-                  });
-                }
-              });
-            }
-          }
+          // Asynchronously update OSRM snapped gradients trail on the map
+          updateMemberTrailOnMap(name, m.trail);
         });
 
         // Adjust map view bounds to fit all family members beautifully
