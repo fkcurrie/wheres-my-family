@@ -306,25 +306,49 @@ const simplifyRDP = (points: TrailCoord[], epsilon: number): TrailCoord[] => {
   }
 };
 
-// --- Fetch Snapped Trail Coordinates from OSRM Map-Matching API ---
+// --- Fetch Snapped Trail Coordinates from OSRM Map-Matching or Routing API ---
 const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoord[]> => {
   if (points.length < 2) return points;
   
-  // Simplify points first to keep the tracepoint count low and remove jitter
-  const simplified = simplifyRDP(points, 0.00005); // ~5m tolerance
+  // Simplify points first to keep the tracepoint count low, preventing URL length issues
+  // 0.00008 (~8 meters) tolerance filters out raw GPS jitter while preserving key turn points
+  const simplified = simplifyRDP(points, 0.00008);
   
-  // OSRM expects: lon1,lat1;lon2,lat2;...
+  // OSRM expects coordinates in [longitude,latitude] format separated by semicolons
   const coordsString = simplified.map(pt => `${pt.longitude},${pt.latitude}`).join(';');
-  const url = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+  
+  // 1. Try OSRM Routing API first: It ALWAYS guarantees a continuous, connected route
+  // that follows the street/path network, even if points are sparse or have large GPS gaps.
+  const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
   
   try {
-    const response = await fetch(url);
+    const response = await fetch(routeUrl);
+    const data = await response.json();
+    
+    if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
+      const routeGeometry = data.routes[0].geometry;
+      if (routeGeometry && routeGeometry.coordinates) {
+        // Map geojson [longitude, latitude] coordinates back to React Native Maps {latitude, longitude} format
+        return routeGeometry.coordinates.map((coord: [number, number]) => ({
+          latitude: coord[1],
+          longitude: coord[0]
+        }));
+      }
+    }
+    console.log('[OSRM Route Info]: Routing not possible or returned code:', data?.code, '- Trying map-matching fallback.');
+  } catch (err) {
+    console.warn('[OSRM Route Error]: Failed to fetch routed trail:', err);
+  }
+  
+  // 2. Fallback to OSRM Map-Matching API if routing fails (or is unavailable)
+  const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+  try {
+    const response = await fetch(matchUrl);
     const data = await response.json();
     
     if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
       const matchGeometry = data.matchings[0].geometry;
       if (matchGeometry && matchGeometry.coordinates) {
-        // Map geojson [lon, lat] coordinates back to maps format
         return matchGeometry.coordinates.map((coord: [number, number]) => ({
           latitude: coord[1],
           longitude: coord[0]
@@ -336,7 +360,7 @@ const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoord[]> =>
     console.warn('[OSRM Match Error]: Failed to fetch snapped trail:', err);
   }
   
-  // Graceful fallback to simplified raw trail
+  // 3. Graceful fallback to the simplified raw trail if both APIs are offline/fail
   return simplified;
 };
 
