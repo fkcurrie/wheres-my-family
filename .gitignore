@@ -39,3 +39,16 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# IDEs and Tools
+.claude/
+.gemini/
+.idea/
+.vscode/
+
+# Vercel
+.vercel/
+web-dashboard/.vercel/
+
+# Logs
+*.log

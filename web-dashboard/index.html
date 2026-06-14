@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Where's My Family? | Live Dashboard</title>
+
+    <!-- Modern Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- MapLibre GL JS (Modern, High-Performance Open Mapbox Alternative) -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.js"></script>
+
+    <style>
+      /* Premium CSS Variables and Styling System */
+      :root {
+        --bg-dark: #f8fafc; /* Soft slate 50 */
+        --panel-dark: rgba(255, 255, 255, 0.85); /* Premium glassmorphic white */
+        --border-glow: rgba(37, 99, 235, 0.15); /* Soft blue border glow */
+        --border-dim: rgba(15, 23, 42, 0.08); /* Light charcoal divider line */
+        --text-primary: #0f172a; /* Deep slate 900 */
+        --text-secondary: #475569; /* Slate 600 */
+        --accent-blue: #2563eb; /* Royal blue 600 */
+        --accent-rose: #e11d48; /* Rose red */
+        --accent-emerald: #059669; /* Deep emerald green */
+        --accent-amber: #d97706; /* High-contrast orange/amber */
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'Outfit', sans-serif;
+        background-color: var(--bg-dark);
+        color: var(--text-primary);
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Header Styling */
+      header {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-dim);
+        padding: 16px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 100;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-logo {
+        font-size: 28px;
+      }
+
+      .brand-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 22px;
+        background: linear-gradient(135deg, #0f172a 0%, #334155 50%, var(--accent-blue) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.5px;
+      }
+
+      .status-badge {
+        background: rgba(5, 150, 105, 0.1);
+        border: 1px solid rgba(5, 150, 105, 0.2);
+        color: var(--accent-emerald);
+        padding: 6px 12px;
+        border-radius: 9999px;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        background-color: var(--accent-emerald);
+        border-radius: 50%;
+        box-shadow: 0 0 12px var(--accent-emerald);
+        animation: pulse 1.8s infinite;
+      }
+
+      /* Main Dashboard Layout */
+      .dashboard-container {
+        flex: 1;
+        display: flex;
+        height: calc(100vh - 73px);
+        position: relative;
+      }
+
+      /* Left Sidebar: Family Cards */
+      .sidebar {
+        width: 420px;
+        background: var(--panel-dark);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid var(--border-dim);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        z-index: 90;
+        padding: 24px;
+        overflow-y: auto;
+      }
+
+      .section-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .refresh-timer {
+        font-size: 12px;
+        color: var(--accent-blue);
+        font-family: monospace;
+      }
+
+      /* Severe Weather Alert Panel */
+      .alert-banner {
+        background: rgba(225, 29, 72, 0.08);
+        border: 1px solid rgba(225, 29, 72, 0.2);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        display: none;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .alert-banner.active {
+        display: flex;
+      }
+
+      .alert-icon {
+        font-size: 20px;
+      }
+
+      .alert-details h4 {
+        color: var(--accent-rose);
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+
+      .alert-details p {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      /* Member Card List */
+      .member-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .member-card {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        border-radius: 16px;
+        padding: 16px;
+        position: relative;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+      }
+
+      .member-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(37, 99, 235, 0.2);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      }
+
+      .member-card-glow {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+      }
+
+      .member-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+      }
+
+      .member-profile {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .member-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: 700;
+        color: white;
+      }
+
+      .member-identity h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .member-device-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+      }
+
+      .mini-status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+
+      .mini-status-dot.active {
+        background-color: var(--accent-emerald);
+      }
+
+      .mini-status-dot.inactive {
+        background-color: var(--text-secondary);
+      }
+
+      .device-status-text {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .member-badge-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .weather-badge {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        padding: 4px 8px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .severe-badge {
+        background: var(--accent-rose);
+        color: white;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 4px 8px;
+        border-radius: 20px;
+        letter-spacing: 0.5px;
+      }
+
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        background: rgba(248, 250, 252, 0.9);
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.04);
+        margin-bottom: 12px;
+      }
+
+      .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .info-label {
+        font-size: 10px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+
+      .info-value {
+        font-size: 13px;
+        color: var(--text-primary);
+        font-weight: 500;
+      }
+
+      .member-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .battery-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .battery-icon {
+        font-size: 15px;
+      }
+
+      .battery-group.low {
+        color: var(--accent-rose);
+      }
+
+      .nudge-btn {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        border: none;
+        color: white;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+      }
+
+      .nudge-btn:hover {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        transform: scale(1.03);
+      }
+
+      .nudge-btn:active {
+        transform: scale(0.98);
+      }
+
+      /* Right Section: The Live Map */
+      .map-container {
+        flex: 1;
+        height: 100%;
+        min-height: 400px;
+        position: relative;
+      }
+
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #f1f5f9;
+      }
+
+      /* Custom MapLibre Marker Emojis */
+      .map-marker-div {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+      }
+
+      /* MapLibre Popup Overrides */
+      .maplibregl-popup-content {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid var(--border-glow) !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+        box-shadow: 0 8px 32px rgba(15, 23, 42, 0.15) !important;
+        font-family: 'Outfit', sans-serif !important;
+      }
+
+      .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+        border-bottom-color: #ffffff !important;
+      }
+      .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+        border-top-color: #ffffff !important;
+      }
+      .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+        border-right-color: #ffffff !important;
+      }
+      .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+        border-left-color: #ffffff !important;
+      }
+
+      .popup-content h4 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 4px;
+        color: #0f172a;
+      }
+
+      .popup-content p {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-bottom: 2px;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+        }
+        70% {
+          transform: scale(1);
+          box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+        }
+        100% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+        }
+      }
+
+      /* Scrollbar Aesthetics */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: rgba(15, 23, 42, 0.1);
+        border-radius: 9999px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(15, 23, 42, 0.2);
+      }
+
+      /* Mobile Responsive View overrides */
+      @media (max-width: 1024px) {
+        body {
+          overflow-y: auto;
+          height: auto;
+        }
+
+        .dashboard-container {
+          flex-direction: column-reverse;
+          height: auto;
+        }
+
+        .sidebar {
+          width: 100%;
+          border-right: none;
+          border-top: 1px solid var(--border-dim);
+          height: auto;
+        }
+
+        .map-container {
+          height: 450px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Dashboard Header -->
+    <header>
+      <div class="brand">
+        <span class="brand-logo">🛡️</span>
+        <div class="brand-info">
+          <h1 class="brand-title">Where's My Family!!</h1>
+        </div>
+      </div>
+      <div class="status-badge">
+        <div class="status-dot"></div>
+        <span id="system-status">Live Tracking Active</span>
+      </div>
+    </header>
+
+    <!-- Left Sidebar: Family Members List -->
+    <div class="dashboard-container">
+      <!-- Left Sidebar: Family Members List -->
+      <div class="sidebar">
+        <!-- Severe Weather Global Warning Banner -->
+        <div id="severe-alert-banner" class="alert-banner">
+          <span class="alert-icon">⚠️</span>
+          <div class="alert-details">
+            <h4>Severe Weather Alert</h4>
+            <p id="severe-alert-text">
+              One or more family members are currently in hazardous weather conditions.
+            </p>
+          </div>
+        </div>
+
+        <div class="section-title">
+          <span>Family Directory</span>
+          <span id="refresh-indicator" class="refresh-timer">Refreshing in 10s...</span>
+        </div>
+
+        <div id="member-list" class="member-list">
+          <!-- Live content injected via JS -->
+          <div style="color: var(--text-secondary); text-align: center; padding: 40px 0">
+            Connecting to MantleDB live locations...
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Workspace: Interactive Map -->
+      <div class="map-container">
+        <div id="map"></div>
+        <!-- On-screen debugging overlay for map logs -->
+        <div
+          id="map-debug-console"
+          style="
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            z-index: 1000;
+            pointer-events: none;
+            max-width: 90%;
+            word-break: break-all;
+            max-height: 120px;
+            overflow-y: auto;
+          "
+        >
+          Initializing tracker console...
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const MANTLE_DB_URL = 'https://mantledb.sh/v2/wheresmyfamily-fkctors/all_locations';
+      const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+
+      let map;
+      let markers = {};
+      let trailLines = {};
+      let secondsLeft = 10;
+      let currentData = {};
+
+      // Logging helper
+      function logToMapConsole(msg, isError = false) {
+        const consoleEl = document.getElementById('map-debug-console');
+        if (consoleEl) {
+          const timestamp = new Date().toLocaleTimeString();
+          const style = isError ? 'color: #f87171;' : '';
+          consoleEl.innerHTML += `<div style="${style}">[${timestamp}] ${msg}</div>`;
+          consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+        console.log(msg);
+      }
+
+      // Initialise MapLibre GL Map (hardware-accelerated WebGL vector maps)
+      function initMap() {
+        logToMapConsole('Starting modern MapLibre GL map setup...');
+
+        // Verify MapLibre library is loaded
+        if (typeof maplibregl === 'undefined') {
+          logToMapConsole('CRITICAL: MapLibre JS library not loaded.', true);
+          return;
+        }
+        logToMapConsole('MapLibre library verified.');
+
+        try {
+          map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+            center: [-79.3832, 43.6532], // Center near Toronto [Lng, Lat]
+            zoom: 11,
+            attributionControl: false,
+          });
+          logToMapConsole('MapLibre object created.');
+
+          map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+          logToMapConsole('Controls added successfully.');
+        } catch (err) {
+          logToMapConsole(`WebGL Map Error: ${err.message}`, true);
+          console.error('MapLibre init error:', err);
+        }
+      }
+
+      // Refresh countdown loop
+      function startRefreshCountdown() {
+        setInterval(() => {
+          secondsLeft--;
+          const indicator = document.getElementById('refresh-indicator');
+          if (secondsLeft <= 0) {
+            indicator.textContent = 'Syncing...';
+            fetchLocations();
+            secondsLeft = 10;
+          } else {
+            indicator.textContent = `Refreshing in ${secondsLeft}s...`;
+          }
+        }, 1000);
+      }
+
+      // Nudge API Trigger
+      async function nudgeMember(name) {
+        const member = currentData[name];
+        if (!member) return;
+
+        try {
+          const button = document.getElementById(`nudge-btn-${name}`);
+          if (button) {
+            button.textContent = '📳 Sending...';
+            button.disabled = true;
+          }
+
+          const payload = {
+            [name]: {
+              ...member,
+              nudgeRequested: true,
+            },
+          };
+
+          const res = await fetch(MANTLE_DB_URL, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Mantle-Key': MANTLE_KEY,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (res.ok) {
+            alert(`Nudge successfully sent to ${name}! Their device will vibrate instantly.`);
+          } else {
+            alert('Could not send nudge. Please try again.');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Error connecting to tracking database.');
+        } finally {
+          fetchLocations();
+        }
+      }
+
+      // Fetch and render from MantleDB
+      async function fetchLocations() {
+        try {
+          const response = await fetch(MANTLE_DB_URL, {
+            headers: { 'X-Mantle-Key': MANTLE_KEY },
+          });
+          const data = await response.json();
+          if (data && !data.error) {
+            currentData = data;
+            renderDashboard(data);
+          }
+        } catch (error) {
+          console.error('Failed fetching data:', error);
+          document.getElementById('system-status').textContent = 'Sync offline';
+          document.getElementById('system-status').parentElement.style.background =
+            'rgba(239, 68, 68, 0.15)';
+          document.getElementById('system-status').parentElement.style.borderColor =
+            'rgba(239, 68, 68, 0.3)';
+          document.getElementById('system-status').style.color = '#f87171';
+        }
+      }
+
+      // Render function for HTML UI and Leaflet markers
+      function renderDashboard(data) {
+        const listContainer = document.getElementById('member-list');
+        const severeAlertBanner = document.getElementById('severe-alert-banner');
+        const severeAlertText = document.getElementById('severe-alert-text');
+
+        listContainer.innerHTML = '';
+        let severeWeatherMembers = [];
+        let mapPoints = [];
+
+        // Filter non-user data keys (e.g. metadata variables prefixed with underscores)
+        const memberNames = Object.keys(data).filter((key) => !key.startsWith('_'));
+
+        if (memberNames.length === 0) {
+          listContainer.innerHTML = `
+          <div style="color: var(--text-secondary); text-align: center; padding: 40px 0;">
+            No active family members registered yet.
+          </div>`;
+          return;
+        }
+
+        memberNames.forEach((name) => {
+          const m = data[name];
+          const lat = m.latitude;
+          const lng = m.longitude;
+          const updatedAt = m.updatedAt || Date.now();
+          const diffMin = Math.round((Date.now() - updatedAt) / 60000);
+          const lastSeenStr =
+            diffMin <= 0 ? 'Just now' : diffMin === 1 ? '1m ago' : `${diffMin}m ago`;
+          const color = getAvatarColor(name);
+
+          // Track weather alerts
+          if (m.weatherIsSevere) {
+            severeWeatherMembers.push(name);
+          }
+
+          // Add valid map point
+          if (lat !== undefined && lng !== undefined) {
+            mapPoints.push({ name, lat, lng, color, m });
+          }
+
+          // Construct HTML Card
+          const card = document.createElement('div');
+          card.className = 'member-card';
+
+          // Dynamic Glow border based on membership
+          card.innerHTML = `
+          <div class="member-card-glow" style="background-color: ${color}"></div>
+          <div class="member-header">
+            <div class="member-profile">
+              <div class="member-avatar" style="background-color: ${color}">
+                ${name.charAt(0).toUpperCase()}
+              </div>
+              <div class="member-identity">
+                <h3>${name}</h3>
+                <div class="member-device-status">
+                  <div class="mini-status-dot ${m.deviceStatus === 'Active' ? 'active' : 'inactive'}"></div>
+                  <span class="device-status-text">${m.deviceStatus || 'Active'}</span>
+                </div>
+              </div>
+            </div>
+            <div class="member-badge-row">
+              ${
+                m.weatherTemp !== undefined
+                  ? `
+                <div class="weather-badge">
+                  <span>${m.weatherEmoji || '☀️'}</span>
+                  <span>${m.weatherTemp}°C</span>
+                </div>`
+                  : ''
+              }
+              ${m.weatherIsSevere ? `<div class="severe-badge">⚠️ SEVERE</div>` : ''}
+            </div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Status</span>
+              <span class="info-value">${m.status || 'Active'}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Last Seen</span>
+              <span class="info-value">${lastSeenStr}</span>
+            </div>
+          </div>
+
+          <div class="member-footer">
+            <div class="battery-group ${m.battery < 20 ? 'low' : ''}">
+              <span class="battery-icon">${m.charging ? '⚡' : m.battery < 20 ? '🪫' : '🔋'}</span>
+              <span>${m.battery || 100}%</span>
+            </div>
+            <button id="nudge-btn-${name}" class="nudge-btn" onclick="nudgeMember('${name}')">
+              📳 Nudge
+            </button>
+          </div>
+        `;
+
+          listContainer.appendChild(card);
+        });
+
+        // Render Map Markers & Trails
+        updateMapMarkers(mapPoints);
+
+        // Handle Severe weather alerts banner
+        if (severeWeatherMembers.length > 0) {
+          severeAlertBanner.classList.add('active');
+          severeAlertText.textContent = `${severeWeatherMembers.join(' & ')} is currently in severe weather conditions! Check in on them immediately.`;
+        } else {
+          severeAlertBanner.classList.remove('active');
+        }
+
+        // Reset online status
+        document.getElementById('system-status').textContent = 'Live Tracking Active';
+        document.getElementById('system-status').parentElement.style.background =
+          'rgba(5, 150, 105, 0.1)';
+        document.getElementById('system-status').parentElement.style.borderColor =
+          'rgba(5, 150, 105, 0.2)';
+        document.getElementById('system-status').style.color = 'var(--accent-emerald)';
+      }
+
+      // MapLibre Marker and Polyline update logic
+      function updateMapMarkers(points) {
+        if (!map) return;
+
+        const bounds = new maplibregl.LngLatBounds();
+        let hasPoints = false;
+
+        points.forEach(({ name, lat, lng, color, m }) => {
+          const markerKey = name;
+          bounds.extend([lng, lat]);
+          hasPoints = true;
+
+          // Draw / Update Marker
+          if (markers[markerKey]) {
+            markers[markerKey].setLngLat([lng, lat]);
+            // Update popup content
+            const popup = markers[markerKey].getPopup();
+            if (popup) {
+              popup.setHTML(getPopupHTML(name, m));
+            }
+          } else {
+            // Custom beautiful DOM-based circular marker matching family member color
+            const el = document.createElement('div');
+            el.className = 'map-marker-div';
+            el.style.backgroundColor = color;
+            el.style.borderColor = m.deviceStatus === 'Active' ? '#10b981' : '#fff';
+            el.textContent = name.charAt(0).toUpperCase();
+
+            const popup = new maplibregl.Popup({ offset: 25 }).setHTML(getPopupHTML(name, m));
+
+            const marker = new maplibregl.Marker({ element: el })
+              .setLngLat([lng, lat])
+              .setPopup(popup)
+              .addTo(map);
+
+            markers[markerKey] = marker;
+          }
+
+          // Draw Trails inside MapLibre source layers
+          if (m.trail && m.trail.length > 1) {
+            const trailCoords = m.trail.map((pt) => [pt.longitude, pt.latitude]);
+            const sourceId = `trail-source-${name}`;
+            const layerId = `trail-layer-${name}`;
+
+            // MapLibre can only add sources/layers after style is fully loaded
+            if (map.isStyleLoaded()) {
+              const source = map.getSource(sourceId);
+              if (source) {
+                source.setData({
+                  type: 'Feature',
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: trailCoords,
+                  },
+                });
+              } else {
+                map.addSource(sourceId, {
+                  type: 'geojson',
+                  data: {
+                    type: 'Feature',
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: trailCoords,
+                    },
+                  },
+                });
+
+                map.addLayer({
+                  id: layerId,
+                  type: 'line',
+                  source: sourceId,
+                  layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round',
+                  },
+                  paint: {
+                    'line-color': color,
+                    'line-width': 4,
+                    'line-dasharray': [2, 2],
+                  },
+                });
+              }
+            } else {
+              // style hasn't loaded yet, register a one-off listener
+              map.once('style.load', () => {
+                if (!map.getSource(sourceId)) {
+                  map.addSource(sourceId, {
+                    type: 'geojson',
+                    data: {
+                      type: 'Feature',
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: trailCoords,
+                      },
+                    },
+                  });
+
+                  map.addLayer({
+                    id: layerId,
+                    type: 'line',
+                    source: sourceId,
+                    layout: {
+                      'line-join': 'round',
+                      'line-cap': 'round',
+                    },
+                    paint: {
+                      'line-color': color,
+                      'line-width': 4,
+                      'line-dasharray': [2, 2],
+                    },
+                  });
+                }
+              });
+            }
+          }
+        });
+
+        // Adjust map view bounds to fit all family members beautifully
+        if (hasPoints) {
+          map.fitBounds(bounds, { padding: 80, maxZoom: 14 });
+        }
+      }
+
+      // Popup Content Builders
+      function getPopupHTML(name, m) {
+        return `
+        <div class="popup-content">
+          <h4>${name}</h4>
+          <p>📍 Status: ${m.status || 'Active'}</p>
+          <p>🔋 Battery: ${m.battery || 100}% ${m.charging ? '(Charging)' : ''}</p>
+          ${m.weatherTemp !== undefined ? `<p>🌡️ Weather: ${m.weatherEmoji || ''} ${m.weatherTemp}°C (${m.weatherDesc})</p>` : ''}
+        </div>
+      `;
+      }
+
+      // Color picker mapping function
+      function getAvatarColor(name) {
+        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+          hash += name.charCodeAt(i);
+        }
+        return colors[Math.abs(hash) % colors.length];
+      }
+
+      // Run On Boot
+      window.onload = () => {
+        initMap();
+        fetchLocations();
+        startRefreshCountdown();
+      };
+    </script>
+  </body>
+</html>

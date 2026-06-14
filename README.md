@@ -21,7 +21,11 @@ This repository is integrated directly with **Expo Application Services (EAS)** 
   * **🔋 Battery Tracker**: Real-time battery percentages and charging indicators.
   * **🛰️ Last-Seen Logs**: Precise relative distance calculation in miles using the Haversine formula and timestamps of the last received coordinates.
   * **📱 Device Activity**: Displays whether the phone is unlocked/active or locked.
-* **📍 24H Location Trails**: Toggle to visualize complete path histories (breadcrumbs) of family members over the last 24 hours.
+* **📍 24H Location Trails (Time-Based Gradients & Snapped-to-Road)**: Visualize complete path histories of family members over the last 24 hours:
+  * **Dynamic Color-Coding**: Trails fade dynamically from **Emerald Green** (representing the most recent locations) to **Vibrant Red** (approaching the 24-hour age limit) to instantly see where members were and when.
+  * **Road-Snapping Routing Engine**: Uses the **OSRM (Open Source Routing Machine) Route & Match API** to automatically snap raw, noisy GPS coordinates to physical streets, footpaths, and highways, producing smooth, continuous, snapped paths instead of chaotic jagged lines.
+  * **Smart Local Performance Cache**: Uses a mutable reference cache to guarantee that OSRM matches are only requested when members get *new* coordinates, completely avoiding redundant network calls.
+  * **Lightweight Offline Fallback (RDP)**: Integrates a local client-side **Ramer-Douglas-Peucker (RDP)** simplification algorithm that acts as an instantaneous offline fallback, rendering a beautifully smoothed raw trail if network connection is lost.
 
 ### 🔄 Reboot-Resilient Background Tracking
 * **Always-On Background Daemon**: Continues updating the backend database with high-accuracy coordinates even when minimized or fully closed.
@@ -64,7 +68,7 @@ graph TD
 ### Prerequisites
 * **Node.js** (LTS or latest)
 * **npm** or **Yarn**
-* **Expo Go** app installed on your test devices
+* **Expo Go** app installed on your test devices (Client version **54.0.8** or compatible Expo SDK 54 runner)
 
 ### Setup
 1. Clone the repository:
