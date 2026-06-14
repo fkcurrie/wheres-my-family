@@ -826,6 +826,71 @@
         document.getElementById('system-status').style.color = 'var(--accent-emerald)';
       }
 
+      // --- Haversine Distance Helper ---
+      function getDistanceInMiles(lat1, lon1, lat2, lon2) {
+        const R = 3958.8; // Earth radius in miles
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      // --- Chronological Trail Sorter & GPS Jump Speed-Filter ---
+      function cleanAndSortTrail(rawTrail) {
+        if (!rawTrail || rawTrail.length === 0) return [];
+        
+        // 1. Filter out invalid/empty coordinates
+        const validPoints = rawTrail.filter(pt => 
+          pt && 
+          typeof pt.latitude === 'number' && 
+          typeof pt.longitude === 'number' &&
+          pt.latitude !== 0 &&
+          pt.longitude !== 0
+        );
+        
+        if (validPoints.length <= 1) return validPoints;
+        
+        // 2. Sort chronologically by timestamp
+        validPoints.sort((a, b) => {
+          const t1 = a.timestamp || 0;
+          const t2 = b.timestamp || 0;
+          return t1 - t2;
+        });
+        
+        // 3. Filter out extreme GPS jumps (speed > 100 mph)
+        const cleaned = [];
+        cleaned.push(validPoints[0]);
+        
+        for (let i = 1; i < validPoints.length; i++) {
+          const lastAccepted = cleaned[cleaned.length - 1];
+          const current = validPoints[i];
+          
+          const dtMs = (current.timestamp || 0) - (lastAccepted.timestamp || 0);
+          if (dtMs <= 0) continue; // Skip points with invalid/duplicate timestamps
+          
+          const distMiles = getDistanceInMiles(
+            lastAccepted.latitude, lastAccepted.longitude,
+            current.latitude, current.longitude
+          );
+          
+          const dtHours = dtMs / (1000 * 60 * 60);
+          const speedMph = distMiles / dtHours;
+          
+          if (speedMph > 100) {
+            logToMapConsole(`[Jump Filter]: Discarded GPS bounce (${speedMph.toFixed(1)} mph over ${distMiles.toFixed(2)} mi)`);
+            continue;
+          }
+          
+          cleaned.push(current);
+        }
+        
+        return cleaned;
+      }
+
       // --- Perpendicular Distance Helper for RDP Simplification ---
       function getPerpendicularDistance(pt, lineStart, lineEnd) {
         const dx = lineEnd.longitude - lineStart.longitude;
@@ -1032,25 +1097,27 @@
       // Asynchronously handle OSRM fetching and rendering with color gradients
       async function updateMemberTrailOnMap(name, rawTrail) {
         if (!map) return;
-        if (!rawTrail || rawTrail.length < 2) {
+        
+        const cleanedTrail = cleanAndSortTrail(rawTrail);
+        if (!cleanedTrail || cleanedTrail.length < 2) {
           removeMemberTrailFromMap(name);
           return;
         }
 
-        const hash = rawTrail.map(pt => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const hash = cleanedTrail.map(pt => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
         const prevHash = lastTrailHashes[name];
 
         let snapped;
         if (hash !== prevHash) {
           lastTrailHashes[name] = hash;
           logToMapConsole(`[OSRM]: Fetching snapped coordinates for ${name}...`);
-          snapped = await fetchSnappedTrail(rawTrail);
+          snapped = await fetchSnappedTrail(cleanedTrail);
           snappedTrails[name] = snapped;
         } else {
-          snapped = snappedTrails[name] || rawTrail;
+          snapped = snappedTrails[name] || cleanedTrail;
         }
 
-        const geojson = buildGradedTrailGeoJSON(snapped, rawTrail);
+        const geojson = buildGradedTrailGeoJSON(snapped, cleanedTrail);
         const sourceId = `trail-source-${name}`;
         const glowLayerId = `trail-glow-layer-${name}`;
         const solidLayerId = `trail-solid-layer-${name}`;
