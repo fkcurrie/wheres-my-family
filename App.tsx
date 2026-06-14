@@ -192,6 +192,101 @@ const getWeatherAndAlertsCached = async (latitude: number, longitude: number) =>
   return lastWeatherValue; // return last known weather if offline / query failed
 };
 
+interface TrailCoord {
+  latitude: number;
+  longitude: number;
+}
+
+// --- Perpendicular Distance Helper for RDP Simplification ---
+const getPerpendicularDistance = (pt: TrailCoord, lineStart: TrailCoord, lineEnd: TrailCoord) => {
+  const dx = lineEnd.longitude - lineStart.longitude;
+  const dy = lineEnd.latitude - lineStart.latitude;
+  
+  if (dx === 0 && dy === 0) {
+    return Math.sqrt(
+      Math.pow(pt.latitude - lineStart.latitude, 2) +
+      Math.pow(pt.longitude - lineStart.longitude, 2)
+    );
+  }
+  
+  const t = ((pt.longitude - lineStart.longitude) * dx + (pt.latitude - lineStart.latitude) * dy) / (dx * dx + dy * dy);
+  
+  let nearestX = lineStart.longitude + t * dx;
+  let nearestY = lineStart.latitude + t * dy;
+  
+  if (t < 0) {
+    nearestX = lineStart.longitude;
+    nearestY = lineStart.latitude;
+  } else if (t > 1) {
+    nearestX = lineEnd.longitude;
+    nearestY = lineEnd.latitude;
+  }
+  
+  return Math.sqrt(
+    Math.pow(pt.longitude - nearestX, 2) +
+    Math.pow(pt.latitude - nearestY, 2)
+  );
+};
+
+// --- Ramer-Douglas-Peucker (RDP) Simplification Algorithm ---
+const simplifyRDP = (points: TrailCoord[], epsilon: number): TrailCoord[] => {
+  if (points.length <= 2) return points;
+  
+  let dmax = 0;
+  let index = 0;
+  const end = points.length - 1;
+  
+  for (let i = 1; i < end; i++) {
+    const d = getPerpendicularDistance(points[i], points[0], points[end]);
+    if (d > dmax) {
+      index = i;
+      dmax = d;
+    }
+  }
+  
+  if (dmax > epsilon) {
+    const results1 = simplifyRDP(points.slice(0, index + 1), epsilon);
+    const results2 = simplifyRDP(points.slice(index), epsilon);
+    return results1.slice(0, results1.length - 1).concat(results2);
+  } else {
+    return [points[0], points[end]];
+  }
+};
+
+// --- Fetch Snapped Trail Coordinates from OSRM Map-Matching API ---
+const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoord[]> => {
+  if (points.length < 2) return points;
+  
+  // Simplify points first to keep the tracepoint count low and remove jitter
+  const simplified = simplifyRDP(points, 0.00005); // ~5m tolerance
+  
+  // OSRM expects: lon1,lat1;lon2,lat2;...
+  const coordsString = simplified.map(pt => `${pt.longitude},${pt.latitude}`).join(';');
+  const url = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+  
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
+      const matchGeometry = data.matchings[0].geometry;
+      if (matchGeometry && matchGeometry.coordinates) {
+        // Map geojson [lon, lat] coordinates back to maps format
+        return matchGeometry.coordinates.map((coord: [number, number]) => ({
+          latitude: coord[1],
+          longitude: coord[0]
+        }));
+      }
+    }
+    console.warn('[OSRM Match Warning]: API returned code:', data?.code);
+  } catch (err) {
+    console.warn('[OSRM Match Error]: Failed to fetch snapped trail:', err);
+  }
+  
+  // Graceful fallback to simplified raw trail
+  return simplified;
+};
+
 // --- Local cache of the user's historical coordinates for 24h trail ---
 const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
   try {
@@ -200,11 +295,11 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
 
     const now = Date.now();
 
-    // Avoid spamming identical coordinates: only add if we moved at least 0.005 miles (~8 meters) or 5 minutes elapsed
+    // Avoid spamming identical coordinates: only add if we moved at least 0.015 miles (~24 meters) or 5 minutes elapsed
     if (trail.length > 0) {
       const lastPoint = trail[trail.length - 1];
       const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      if (dist >= 0.005 || now - lastPoint.timestamp > 5 * 60 * 1000) {
+      if (dist >= 0.015 || now - lastPoint.timestamp > 5 * 60 * 1000) {
         trail.push({ latitude, longitude, timestamp: now });
       }
     } else {
@@ -451,6 +546,52 @@ function MainApp() {
   }, [userLocation]);
 
   // New Feature States
+  const [snappedTrails, setSnappedTrails] = useState<Record<string, TrailCoord[]>>({});
+  const lastTrailHashes = useRef<Record<string, string>>({});
+
+  // --- Map Matching for Family Trails ---
+  useEffect(() => {
+    let active = true;
+    
+    const processTrails = async () => {
+      const newSnappedTrails = { ...snappedTrails };
+      let changed = false;
+      
+      for (const member of familyMembers) {
+        if (!member.trail || member.trail.length < 2) {
+          if (snappedTrails[member.id]) {
+            delete newSnappedTrails[member.id];
+            delete lastTrailHashes.current[member.id];
+            changed = true;
+          }
+          continue;
+        }
+        
+        // Create a unique hash/string of the raw trail coordinates
+        const hash = member.trail.map((pt: any) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const prevHash = lastTrailHashes.current[member.id];
+        
+        if (hash !== prevHash) {
+          lastTrailHashes.current[member.id] = hash;
+          
+          // Fetch snapped coordinates from OSRM map matching API
+          const snapped = await fetchSnappedTrail(member.trail);
+          if (active) {
+            newSnappedTrails[member.id] = snapped;
+            changed = true;
+          }
+        }
+      }
+      
+      if (changed && active) {
+        setSnappedTrails(newSnappedTrails);
+      }
+    };
+    
+    if (showTrails && familyMembers.length > 0) {
+      processTrails();
+    }
+  }, [familyMembers, showTrails]);
 
   // --- EAS Observe Performance Mark ---
   useEffect(() => {
@@ -502,7 +643,7 @@ function MainApp() {
         if (status === 'granted') {
           subscription = await Location.watchPositionAsync(
             {
-              accuracy: Location.Accuracy.Balanced,
+              accuracy: Location.Accuracy.High,
               timeInterval: 60000, // Update every 1 minute
               distanceInterval: 10, // Or every 10 meters
             },
@@ -786,7 +927,7 @@ function MainApp() {
       // Fetch initial single location
       if (foreground.granted) {
         const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
         });
         setUserLocation(loc);
         const saved = await AsyncStorage.getItem('user_name');
@@ -832,7 +973,7 @@ function MainApp() {
 
         // Start tracking task with high-efficiency battery profiles
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
           timeInterval: 60000, // 1 minute
           distanceInterval: 15, // 15 meters
           deferredUpdatesInterval: 60000, // batch updates every 1 minute
@@ -914,9 +1055,29 @@ function MainApp() {
 
   // --- Share App Invitation with Family ---
   const shareAppInvite = async () => {
+    // EAS & TestFlight installation links for our family members:
+    // Frank can replace this with his actual TestFlight public link (e.g. https://testflight.apple.com/join/xxxxxx)
+    const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/YOUR_CODE'; 
+    const ANDROID_PREVIEW_LINK = 'https://expo.dev/accounts/fkctor/projects/wheres-my-family/builds';
+
+    const inviteMessage = 
+      `Join our family tracking map on "Where's my family!!" 📍\n` +
+      `Frank built this custom app just for our family to keep each other safe!\n\n` +
+      `📱 FOR IPHONE (iOS) USERS:\n` +
+      `1. Install the free "TestFlight" app from the App Store.\n` +
+      `2. Tap our family join link to install "Where's my family!!":\n` +
+      `${TESTFLIGHT_JOIN_LINK}\n\n` +
+      `🤖 FOR ANDROID USERS:\n` +
+      `1. Tap this link to download and install our preview app (APK):\n` +
+      `${ANDROID_PREVIEW_LINK}\n` +
+      `(Download the latest "preview" build, click "Install", and allow installation if prompted by your browser).\n\n` +
+      `✨ ONCE INSTALLED:\n` +
+      `- Open the app and enter your name to show up on the family map.\n` +
+      `- IMPORTANT: Set Location permissions to "Always Allow" (Background Tracking) so we can keep each other safe even when the phone is locked in your pocket! 🔒`;
+
     try {
       await Share.share({
-        message: `Join our family tracking map on "Where's my family!!" (Frank built this just for our family).\n\n1. Download "Expo Go" for free on your App Store or Google Play Store.\n2. Tap this link to open the app:\nexp://u.expo.dev/c24d08a0-bbe2-42c5-9c76-ddbe8fce92ed?channel-name=production\n\n3. Type in your name and set Location permissions to "Always Allow" so we can keep each other safe in the background!`,
+        message: inviteMessage,
       });
     } catch (error) {
       console.warn('Sharing failed:', error);
@@ -1064,19 +1225,37 @@ function MainApp() {
                   if (!member.trail || member.trail.length < 2) {
                     return null;
                   }
-                  const trailCoords = member.trail.map((pt: any) => ({
+                  
+                  // Use snapped coordinates from OSRM if available, otherwise fall back to raw trail coords
+                  const coordinates = snappedTrails[member.id] || member.trail.map((pt: any) => ({
                     latitude: pt.latitude,
                     longitude: pt.longitude,
                   }));
 
+                  // Helper for translucent outer glow color (e.g. hex #3b82f6 -> rgba glow)
+                  const glowColor = member.color && member.color.startsWith('#') 
+                    ? `${member.color}33` 
+                    : 'rgba(148, 163, 184, 0.3)';
+
                   return (
-                    <Polyline
-                      key={`trail-${member.id}`}
-                      coordinates={trailCoords}
-                      strokeColor={member.color}
-                      strokeWidth={4}
-                      lineDashPattern={[6, 6]}
-                    />
+                    <React.Fragment key={`trail-group-${member.id}`}>
+                      {/* Subtle outer glow border for depth */}
+                      <Polyline
+                        coordinates={coordinates}
+                        strokeColor={glowColor}
+                        strokeWidth={8}
+                        lineJoin="round"
+                        lineCap="round"
+                      />
+                      {/* Inner smooth, solid sleek path */}
+                      <Polyline
+                        coordinates={coordinates}
+                        strokeColor={member.color}
+                        strokeWidth={3}
+                        lineJoin="round"
+                        lineCap="round"
+                      />
+                    </React.Fragment>
                   );
                 })}
             </MapView>
