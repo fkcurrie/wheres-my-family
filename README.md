@@ -13,6 +13,17 @@ This repository is integrated directly with **Expo Application Services (EAS)** 
 
 ---
 
+## 🔗 Live Deployments & Quick Links
+
+| Platform / Service | Type | Link |
+| :--- | :---: | :--- |
+| 🌐 **Live Web Dashboard** | Web App (Vercel) | [project-6eady.vercel.app](https://project-6eady.vercel.app/) |
+| 🤖 **Android Standalone Client** | Standalone APK Build | [Download Latest Preview APK](https://expo.dev/artifacts/eas/hoQ03CQjd0l-DLhdww_Cp3dgMp1YxYDJUjWg-l1p4CY.apk) |
+| 🍎 **iOS Standalone Client** | TestFlight Beta | [Join Apple TestFlight Beta](https://testflight.apple.com/join/6780024343) |
+| ☁️ **EAS Project Console** | Cloud Platform Dashboard | [EAS wheres-my-family Dashboard](https://expo.dev/accounts/fkctor/projects/wheres-my-family) |
+
+---
+
 ## ✨ Primary Features
 
 ### 🗺️ Live Family Dashboard
