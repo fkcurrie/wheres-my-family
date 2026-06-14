@@ -71,6 +71,141 @@ const getDistanceInMiles = (lat1: number, lon1: number, lat2: number, lon2: numb
   return R * c;
 };
 
+// --- Spatial-Chaining De-interleaving Algorithm for Trail Cleaning ---
+const cleanAndSortTrail = (rawTrail: any[] | undefined): any[] => {
+  if (!rawTrail || rawTrail.length === 0) return [];
+  
+  // 1. Filter out invalid/empty coordinates
+  const validPoints = rawTrail.filter(
+    (pt) =>
+      pt &&
+      typeof pt.latitude === 'number' &&
+      typeof pt.longitude === 'number' &&
+      pt.latitude !== 0 &&
+      pt.longitude !== 0
+  );
+  
+  if (validPoints.length <= 1) return validPoints;
+  
+  // 2. Sort chronologically by timestamp
+  validPoints.sort((a, b) => {
+    const t1 = a.timestamp || 0;
+    const t2 = b.timestamp || 0;
+    return t1 - t2;
+  });
+  
+  // 3. Cluster points into sequential "chains" to separate interleaved devices/streams
+  const chains: any[][] = [];
+  
+  for (const pt of validPoints) {
+    let bestChain: any[] | null = null;
+    let minDistance = Infinity;
+    
+    for (const chain of chains) {
+      const lastPt = chain[chain.length - 1];
+      const dist = getDistanceInMiles(lastPt.latitude, lastPt.longitude, pt.latitude, pt.longitude);
+      const dtMs = (pt.timestamp || 0) - (lastPt.timestamp || 0);
+      
+      // Speed check
+      let isSpeedReasonable = false;
+      if (dtMs > 0) {
+        const dtHours = dtMs / (1000 * 60 * 60);
+        const speedMph = dist / dtHours;
+        if (speedMph <= 120) {
+          isSpeedReasonable = true;
+        }
+      } else if (dtMs === 0) {
+        // Same timestamp: allow if extremely close spatially (duplicate/sync overlap)
+        if (dist < 0.02) {
+          isSpeedReasonable = true;
+        }
+      }
+      
+      // Spatial proximity check (bypass speed filter if consecutive points are within 0.5 miles)
+      const isSpatiallyClose = dist < 0.5; // 0.5 miles
+      
+      if (isSpeedReasonable || isSpatiallyClose) {
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestChain = chain;
+        }
+      }
+    }
+    
+    if (bestChain) {
+      bestChain.push(pt);
+    } else {
+      // Create a new chain
+      chains.push([pt]);
+    }
+  }
+  
+  // 4. Select and assemble chains
+  // Filter out single-point chains as noise
+  const validChains = chains.filter((c) => c.length >= 2);
+  if (validChains.length === 0) {
+    return chains.length > 0 ? chains[0] : [];
+  }
+  
+  // Calculate characteristics for each chain
+  const processedChains: any[] = [];
+  for (const chain of validChains) {
+    let maxSpanDist = 0;
+    for (const pt of chain) {
+      const dist = getDistanceInMiles(chain[0].latitude, chain[0].longitude, pt.latitude, pt.longitude);
+      if (dist > maxSpanDist) maxSpanDist = dist;
+    }
+    
+    let totalDist = 0;
+    for (let i = 0; i < chain.length - 1; i++) {
+      totalDist += getDistanceInMiles(chain[i].latitude, chain[i].longitude, chain[i + 1].latitude, chain[i + 1].longitude);
+    }
+    
+    // Attach custom properties to the array object
+    (chain as any).maxSpanDist = maxSpanDist;
+    (chain as any).cumulativeDistance = totalDist;
+    (chain as any).startTime = chain[0].timestamp;
+    (chain as any).endTime = chain[chain.length - 1].timestamp;
+    processedChains.push(chain);
+  }
+  
+  // Filter out stationary simultaneous noise chains (e.g. tablet left at home)
+  const hasActiveMovingChain = processedChains.some((c) => (c as any).maxSpanDist > 0.2);
+  
+  let finalChains = processedChains;
+  if (hasActiveMovingChain) {
+    finalChains = processedChains.filter((c) => {
+      if ((c as any).maxSpanDist > 0.05) return true; // Keep if moving
+      
+      // Stationary. Check if it overlaps with an active moving chain
+      const overlaps = processedChains.some((mc) => {
+        if (mc === c || (mc as any).maxSpanDist <= 0.05) return false;
+        // Overlaps in time with a buffer of 10s
+        return (
+          ((c as any).startTime >= (mc as any).startTime - 10000 && (c as any).startTime <= (mc as any).endTime + 10000) ||
+          ((c as any).endTime >= (mc as any).startTime - 10000 && (c as any).endTime <= (mc as any).endTime + 10000)
+        );
+      });
+      
+      if (overlaps) {
+        addDiagnosticLog(`[De-interleaving] Filtered out static home-device pollution at [${c[0].latitude.toFixed(4)}, ${c[0].longitude.toFixed(4)}] during active movement.`).catch((err) => console.warn(err));
+        return false;
+      }
+      return true;
+    });
+  }
+  
+  // Sort final chains by start time to maintain overall chronological structure
+  finalChains.sort((a, b) => (a as any).startTime - (b as any).startTime);
+  
+  const result: any[] = [];
+  for (const chain of finalChains) {
+    result.push(...chain);
+  }
+  
+  return result;
+};
+
 // --- Gradient Trail Helpers ---
 // Interpolate color from Emerald Green (most recent) to Vibrant Red (approaching 24h old)
 const interpolateTrailColor = (ageMs: number): { solid: string; glow: string } => {
@@ -688,8 +823,7 @@ function MainApp() {
       let changed = false;
       
       for (const member of familyMembers) {
-        const rawTrail = member.trail || [];
-        const cleanTrail = rawTrail.filter((pt: any) => pt && typeof pt.latitude === 'number' && typeof pt.longitude === 'number');
+        const cleanTrail = cleanAndSortTrail(member.trail);
 
         if (cleanTrail.length < 2) {
           if (snappedTrails[member.id]) {
@@ -1368,12 +1502,13 @@ function MainApp() {
 
               {showTrails &&
                 familyMembers.map((member) => {
-                  if (!member.trail || member.trail.length < 2) {
+                  const cleanTrail = cleanAndSortTrail(member.trail);
+                  if (cleanTrail.length < 2) {
                     return null;
                   }
                   
-                  // Use snapped coordinates from OSRM if available, otherwise fall back to raw trail coords
-                  const coordinates = snappedTrails[member.id] || member.trail.map((pt: any) => ({
+                  // Use snapped coordinates from OSRM if available, otherwise fall back to clean trail coords
+                  const coordinates = snappedTrails[member.id] || cleanTrail.map((pt: any) => ({
                     latitude: pt.latitude,
                     longitude: pt.longitude,
                   }));
@@ -1388,8 +1523,8 @@ function MainApp() {
                     const pt1 = coordinates[i];
                     const pt2 = coordinates[i + 1];
                     
-                    const ts1 = getCoordinateTimestamp(pt1, member.trail, i, coordinates.length);
-                    const ts2 = getCoordinateTimestamp(pt2, member.trail, i + 1, coordinates.length);
+                    const ts1 = getCoordinateTimestamp(pt1, cleanTrail, i, coordinates.length);
+                    const ts2 = getCoordinateTimestamp(pt2, cleanTrail, i + 1, coordinates.length);
                     const avgTimestamp = (ts1 + ts2) / 2;
                     const ageMs = Math.max(0, Date.now() - avgTimestamp);
                     

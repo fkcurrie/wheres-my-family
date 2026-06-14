@@ -538,7 +538,7 @@
 
         <div class="section-title">
           <span>Family Directory</span>
-          <span id="refresh-indicator" class="refresh-timer">Refreshing in 10s...</span>
+          <span id="refresh-indicator" class="refresh-timer">Refreshing in 60s...</span>
         </div>
 
         <div id="member-list" class="member-list">
@@ -588,7 +588,7 @@
       let map;
       let markers = {};
       let trailLines = {};
-      let secondsLeft = 10;
+      let secondsLeft = 60;
       let currentData = {};
       let snappedTrails = {};
       let lastTrailHashes = {};
@@ -642,7 +642,7 @@
           if (secondsLeft <= 0) {
             indicator.textContent = 'Syncing...';
             fetchLocations();
-            secondsLeft = 10;
+            secondsLeft = 60;
           } else {
             indicator.textContent = `Refreshing in ${secondsLeft}s...`;
           }
