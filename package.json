@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build": "echo 'Bypassing Node compilation for static files'"
+    "build": "mkdir -p public && cp web-dashboard/index.html public/index.html && cp dashboard.html public/dashboard.html"
+
   },
   "private": true
 }
