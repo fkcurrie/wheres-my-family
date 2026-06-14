@@ -75,8 +75,8 @@ const getDistanceInMiles = (lat1: number, lon1: number, lat2: number, lon2: numb
 // Interpolate color from Emerald Green (most recent) to Vibrant Red (approaching 24h old)
 const interpolateTrailColor = (ageMs: number): { solid: string; glow: string } => {
   const limit = 24 * 60 * 60 * 1000; // 24 hours in ms
-  // Clamp ratio between 0 and 1
-  const ratio = Math.max(0, Math.min(1, ageMs / limit));
+  const safeAgeMs = isNaN(ageMs) ? 0 : Math.max(0, Math.min(limit, ageMs));
+  const ratio = safeAgeMs / limit;
   
   // Emerald Green: rgb(34, 197, 94) -> R=34, G=197, B=94
   // Vibrant Red: rgb(239, 68, 68) -> R=239, G=68, B=68
@@ -97,25 +97,56 @@ const getCoordinateTimestamp = (
   index: number,
   total: number
 ): number => {
+  // Helper to parse any format of timestamp (string, number, ISO) safely to numeric millisecond Epoch
+  const parseTimestamp = (val: any): number | null => {
+    if (!val) return null;
+    const num = Number(val);
+    if (!isNaN(num) && num > 0) {
+      // If timestamp is in seconds (Unix epoch < 10 billion), convert to milliseconds
+      if (num < 10000000000) return num * 1000;
+      return num;
+    }
+    // Try parsing as ISO Date string
+    const parsedDate = Date.parse(val);
+    if (!isNaN(parsedDate) && parsedDate > 0) {
+      return parsedDate;
+    }
+    return null;
+  };
+
   // If the raw trail point at the same index exists and has the same length, we can assume a direct 1-to-1 match
-  if (rawTrail && rawTrail[index] && rawTrail[index].timestamp && rawTrail.length === total) {
-    return rawTrail[index].timestamp;
+  if (rawTrail && rawTrail[index] && rawTrail.length === total) {
+    const ts = parseTimestamp(rawTrail[index].timestamp);
+    if (ts !== null) return ts;
   }
   
   // Otherwise, match based on physical distance to the closest raw coordinate
   if (rawTrail && rawTrail.length > 0) {
     let minDistance = Infinity;
-    let closestTimestamp = rawTrail[0].timestamp || Date.now();
+    let closestTimestamp: number | null = null;
+    
+    // Set first valid timestamp as standard baseline fallback
     for (const pt of rawTrail) {
-      if (!pt.timestamp) continue;
+      const ts = parseTimestamp(pt.timestamp);
+      if (ts !== null) {
+        closestTimestamp = ts;
+        break;
+      }
+    }
+    
+    for (const pt of rawTrail) {
+      const ts = parseTimestamp(pt.timestamp);
+      if (ts === null) continue;
+      
       // Use squared distance for speed (no Math.sqrt needed)
       const dist = Math.pow(pt.latitude - coord.latitude, 2) + Math.pow(pt.longitude - coord.longitude, 2);
       if (dist < minDistance) {
         minDistance = dist;
-        closestTimestamp = pt.timestamp;
+        closestTimestamp = ts;
       }
     }
-    return closestTimestamp;
+    
+    if (closestTimestamp !== null) return closestTimestamp;
   }
   
   // Fallback to relative index ratio if rawTrail is missing timestamps or empty
