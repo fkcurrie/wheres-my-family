@@ -11,7 +11,9 @@
       "bundleIdentifier": "ca.sfle.wheresmyfamily",
       "appleTeamId": "LSV2MNUNZ8",
       "infoPlist": {
-        "UIBackgroundModes": ["location"],
+        "UIBackgroundModes": [
+          "location"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -45,13 +47,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow 'Where's my family!!' to always track your location to keep your family updated.",
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "owner": "fkctor",
-    "runtimeVersion": "exposdk:54.0.0",
+    "runtimeVersion": "exposdk:56.0.0",
     "extra": {
       "eas": {
         "projectId": "e6d11c86-3893-4c28-95c9-37186f543cb5"
