@@ -867,34 +867,114 @@
           return t1 - t2;
         });
         
-        // 3. Filter out extreme GPS jumps (speed > 100 mph)
-        const cleaned = [];
-        cleaned.push(validPoints[0]);
+        // 3. Cluster points into sequential "chains" to separate interleaved devices/streams
+        const chains = [];
         
-        for (let i = 1; i < validPoints.length; i++) {
-          const lastAccepted = cleaned[cleaned.length - 1];
-          const current = validPoints[i];
+        for (const pt of validPoints) {
+          let bestChain = null;
+          let minDistance = Infinity;
           
-          const dtMs = (current.timestamp || 0) - (lastAccepted.timestamp || 0);
-          if (dtMs <= 0) continue; // Skip points with invalid/duplicate timestamps
-          
-          const distMiles = getDistanceInMiles(
-            lastAccepted.latitude, lastAccepted.longitude,
-            current.latitude, current.longitude
-          );
-          
-          const dtHours = dtMs / (1000 * 60 * 60);
-          const speedMph = distMiles / dtHours;
-          
-          if (speedMph > 100) {
-            logToMapConsole(`[Jump Filter]: Discarded GPS bounce (${speedMph.toFixed(1)} mph over ${distMiles.toFixed(2)} mi)`);
-            continue;
+          for (const chain of chains) {
+            const lastPt = chain[chain.length - 1];
+            const dist = getDistanceInMiles(lastPt.latitude, lastPt.longitude, pt.latitude, pt.longitude);
+            const dtMs = (pt.timestamp || 0) - (lastPt.timestamp || 0);
+            
+            // Speed check
+            let isSpeedReasonable = false;
+            if (dtMs > 0) {
+              const dtHours = dtMs / (1000 * 60 * 60);
+              const speedMph = dist / dtHours;
+              if (speedMph <= 120) {
+                isSpeedReasonable = true;
+              }
+            } else if (dtMs === 0) {
+              // Same timestamp: allow if extremely close spatially (duplicate/sync overlap)
+              if (dist < 0.02) {
+                isSpeedReasonable = true;
+              }
+            }
+            
+            // Spatial proximity check (bypass speed filter if consecutive points are within 0.5 miles)
+            // This perfectly supports fast-playback simulations without merging interleaved devices
+            const isSpatiallyClose = dist < 0.5; // 0.5 miles
+            
+            if (isSpeedReasonable || isSpatiallyClose) {
+              if (dist < minDistance) {
+                minDistance = dist;
+                bestChain = chain;
+              }
+            }
           }
           
-          cleaned.push(current);
+          if (bestChain) {
+            bestChain.push(pt);
+          } else {
+            // Create a new chain
+            chains.push([pt]);
+          }
         }
         
-        return cleaned;
+        // 4. Select and assemble chains
+        // Filter out single-point chains as noise
+        const validChains = chains.filter(c => c.length >= 2);
+        if (validChains.length === 0) {
+          return chains.length > 0 ? chains[0] : [];
+        }
+        
+        // Calculate characteristics for each chain
+        const processedChains = [];
+        for (const chain of validChains) {
+          let maxSpanDist = 0;
+          for (const pt of chain) {
+            const dist = getDistanceInMiles(chain[0].latitude, chain[0].longitude, pt.latitude, pt.longitude);
+            if (dist > maxSpanDist) maxSpanDist = dist;
+          }
+          
+          let totalDist = 0;
+          for (let i = 0; i < chain.length - 1; i++) {
+            totalDist += getDistanceInMiles(chain[i].latitude, chain[i].longitude, chain[i+1].latitude, chain[i+1].longitude);
+          }
+          
+          chain.maxSpanDist = maxSpanDist;
+          chain.cumulativeDistance = totalDist;
+          chain.startTime = chain[0].timestamp;
+          chain.endTime = chain[chain.length - 1].timestamp;
+          processedChains.push(chain);
+        }
+        
+        // Filter out stationary simultaneous noise chains (e.g. tablet left at home)
+        const hasActiveMovingChain = processedChains.some(c => c.maxSpanDist > 0.2);
+        
+        let finalChains = processedChains;
+        if (hasActiveMovingChain) {
+          finalChains = processedChains.filter(c => {
+            if (c.maxSpanDist > 0.05) return true; // Keep if moving
+            
+            // Stationary. Check if it overlaps with an active moving chain
+            const overlaps = processedChains.some(mc => {
+              if (mc === c || mc.maxSpanDist <= 0.05) return false;
+              // Overlaps in time with a buffer of 10s
+              return (c.startTime >= mc.startTime - 10000 && c.startTime <= mc.endTime + 10000) ||
+                     (c.endTime >= mc.startTime - 10000 && c.endTime <= mc.endTime + 10000);
+            });
+            
+            if (overlaps) {
+              logToMapConsole(`[De-interleaving]: Filtered out static home-device pollution at [${c[0].latitude.toFixed(4)}, ${c[0].longitude.toFixed(4)}] during active movement.`);
+              return false;
+            }
+            return true;
+          });
+        }
+        
+        // Sort final chains by start time to maintain overall chronological structure
+        finalChains.sort((a, b) => a.startTime - b.startTime);
+        
+        const result = [];
+        for (const chain of finalChains) {
+          result.push(...chain);
+        }
+        
+        return result;
       }
 
       // --- Perpendicular Distance Helper for RDP Simplification ---
