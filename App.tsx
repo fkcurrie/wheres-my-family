@@ -372,11 +372,16 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
 
     const now = Date.now();
 
-    // Avoid spamming identical coordinates: only add if we moved at least 0.005 miles (~8 meters) or 30 seconds elapsed
+    // Avoid spamming identical coordinates: log high-density (30s) while moving, and low-density (5m) when stationary
     if (trail.length > 0) {
       const lastPoint = trail[trail.length - 1];
       const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      if (dist >= 0.005 || now - lastPoint.timestamp > 30 * 1000) {
+      const timeElapsed = now - lastPoint.timestamp;
+
+      const isMoving = dist >= 0.005; // ~8 meters movement
+      const shouldLog = (isMoving && timeElapsed >= 30 * 1000) || (timeElapsed >= 5 * 60 * 1000);
+
+      if (shouldLog) {
         trail.push({ latitude, longitude, timestamp: now });
       }
     } else {
@@ -387,10 +392,11 @@ const updateAndGetLocalTrail = async (latitude: number, longitude: number) => {
     const limit = now - 24 * 60 * 60 * 1000;
     trail = trail.filter((pt: any) => pt.timestamp > limit);
 
-    // Cap at 120 points to allow 1 hour of rich high-density driving or walk paths on MantleDB payload
-    if (trail.length > 120) {
-      trail = trail.slice(trail.length - 120);
+    // Cap at 1000 points to fully cover a high-density 24h trail history on MantleDB payload
+    if (trail.length > 1000) {
+      trail = trail.slice(trail.length - 1000);
     }
+
 
     await AsyncStorage.setItem('user_trail', JSON.stringify(trail));
     return trail;
