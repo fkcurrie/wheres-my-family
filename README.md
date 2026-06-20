@@ -1,7 +1,7 @@
 # 📍 Where's my family!!
 
 > **Enterprise-Grade Private Family Tracking & Diagnostics App**
-> Built with Expo, TypeScript, React Native Maps, and EAS Workflows.
+> Built with Expo, TypeScript, React Native Maps, and GitHub Actions Pipelines.
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Where's my family!!** is a secure, cross-platform location-sharing and tracking application designed for family circles. The application provides instant location visibility on a rich interactive map, status indicators (like battery levels, phone state, and relative distance), panic alarms, and persistent background location monitoring that survives device restarts.
 
-This repository is integrated directly with **Expo Application Services (EAS)** for automated Quality Assurance and cloud-native builds (Android APKs and iOS IPAs).
+This repository is integrated directly with **GitHub Actions** for automated Quality Assurance and cloud-native builds (Android AABs and iOS IPAs) deploying directly to Google Play and Apple App Store.
 
 ---
 
@@ -52,27 +52,36 @@ This repository is integrated directly with **Expo Application Services (EAS)** 
 
 ---
 
-## 🛠️ Automated Cloud CI/CD (EAS Workflows)
+## 🛠️ Automated Cloud CI/CD (GitHub Actions Workflows)
 
-We utilize **EAS Workflows** to manage code quality, linting, formatting, type-safety checks, and parallel app compilations fully in the cloud.
+We utilize **GitHub Actions** to manage code quality, linting, formatting, type-safety checks, and parallel app compilations fully in the cloud—completely bypassing EAS Build limits and ensuring unlimited, free, automated compilation.
 
-The **`.eas/workflows/regression-test.yml`** workflow runs on every push and pull request to the `master` branch:
+The pipelines are triggered manually via **workflow_dispatch** in the GitHub Actions tab, or automatically when a version tag matching `v*` (e.g., `v1.0.12`) is pushed to `master`:
 
 ```mermaid
 graph TD
-    A[Push / PR to master] --> B[EAS Workflow Spawned]
-    B --> C[Verify Types & Config]
-    C -->|Run expo doctor| D[Expo Diagnostics]
-    C -->|Run typecheck| E[TypeScript compilation]
-    C -->|Run ESLint| F[ESLint Code Quality]
-
-    D & E & F --> G{All Passed?}
-
-    G -->|Yes| H[Parallel Builds]
-    G -->|No| I[Workflow Fails & Alerts]
-
-    H --> J[Build Android Preview APK]
-    H --> K[Build iOS Production IPA]
+    A[Push tag v* OR Manual Trigger] --> B[GitHub Actions Workflows]
+    
+    B --> C[Compile Android Release]
+    B --> D[Compile iOS TestFlight Release]
+    
+    subgraph Android Pipeline
+        C --> C1[Install Dependencies & Setup Node]
+        C1 --> C2[Pre-Check TypeScript & Lint]
+        C2 --> C3[Expo Prebuild Platform Android]
+        C3 --> C4[Decode Keystore & Configure JDK 17]
+        C4 --> C5[Compile Release AAB with Gradle]
+        C5 --> C6[Direct Upload to Google Play Console Internal Track]
+    end
+    
+    subgraph iOS Pipeline
+        D --> D1[Install Dependencies & Setup Node]
+        D1 --> D2[Pre-Check TypeScript & Lint]
+        D2 --> D3[Expo Prebuild Platform iOS]
+        D3 --> D4[Disable Auto-Signing & Install Certs/Profile]
+        D4 --> D5[Compile & Archive Release IPA]
+        D5 --> D6[Direct Upload to App Store Connect TestFlight]
+    end
 ```
 
 ---
