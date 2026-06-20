@@ -1,0 +1,13 @@
+{
+  "name": "wheres-my-family-web-dashboard",
+  "version": "1.0.0",
+  "description": "Premium Live Map Tracker Dashboard on Cloud Run",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "private": true
+}

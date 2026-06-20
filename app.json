@@ -59,14 +59,6 @@
       "favicon": "./assets/favicon.png"
     },
     "owner": "fkctor",
-    "runtimeVersion": "exposdk:54.0.0",
-    "extra": {
-      "eas": {
-        "projectId": "e6d11c86-3893-4c28-95c9-37186f543cb5"
-      }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/e6d11c86-3893-4c28-95c9-37186f543cb5"
-    }
+    "runtimeVersion": "exposdk:54.0.0"
   }
 }

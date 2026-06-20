@@ -17,9 +17,6 @@
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css" />
     <script src="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.js"></script>
 
-    <!-- Vercel Speed Insights (Static HTML Integration) -->
-    <script src="/_vercel/speed-insights/script.js" defer></script>
-
     <style>
       /* Premium CSS Variables and Styling System */
       :root {
@@ -499,199 +496,9 @@
           height: auto;
         }
 
+        .map-container {
+          height: 450px;
         }
-      }
-
-      /* Feedback Button & Modal styles */
-      .feedback-trigger-btn {
-        background: linear-gradient(135deg, #475569 0%, #334155 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: white;
-        font-family: 'Outfit', sans-serif;
-        font-size: 13px;
-        font-weight: 600;
-        padding: 8px 16px;
-        border-radius: 9999px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
-      }
-
-      .feedback-trigger-btn:hover {
-        background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
-      }
-
-      .feedback-trigger-btn:active {
-        transform: translateY(0);
-      }
-
-      .feedback-modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(15, 23, 42, 0.4);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-      }
-
-      .feedback-modal.active {
-        display: flex;
-        opacity: 1;
-      }
-
-      .feedback-content {
-        background: #ffffff;
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        border-radius: 20px;
-        width: 480px;
-        max-width: 90%;
-        padding: 28px;
-        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.15);
-        position: relative;
-        transform: scale(0.95);
-        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      }
-
-      .feedback-modal.active .feedback-content {
-        transform: scale(1);
-      }
-
-      .feedback-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-      }
-
-      .feedback-title {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: #0f172a;
-      }
-
-      .feedback-close {
-        font-size: 20px;
-        color: var(--text-secondary);
-        cursor: pointer;
-        border: none;
-        background: none;
-        padding: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: color 0.2s;
-      }
-
-      .feedback-close:hover {
-        color: var(--accent-rose);
-      }
-
-      .feedback-form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 18px;
-      }
-
-      .feedback-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .feedback-input, .feedback-textarea, .feedback-select {
-        border: 1px solid rgba(15, 23, 42, 0.1);
-        border-radius: 10px;
-        padding: 10px 14px;
-        font-family: 'Outfit', sans-serif;
-        font-size: 14px;
-        color: #0f172a;
-        background: rgba(248, 250, 252, 0.8);
-        transition: all 0.2s;
-      }
-
-      .feedback-input:focus, .feedback-textarea:focus, .feedback-select:focus {
-        outline: none;
-        border-color: var(--accent-blue);
-        background: #ffffff;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-      }
-
-      .feedback-submit-btn {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        border: none;
-        color: white;
-        font-family: 'Outfit', sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        padding: 12px;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        width: 100%;
-        margin-top: 10px;
-      }
-
-      .feedback-submit-btn:hover {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
-      }
-
-      .feedback-submit-btn:active {
-        transform: translateY(0);
-      }
-
-      .feedback-submit-btn:disabled {
-        background: #94a3b8;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-      }
-
-      .feedback-result-banner {
-        margin-top: 14px;
-        padding: 12px;
-        border-radius: 10px;
-        font-size: 13px;
-        display: none;
-        align-items: flex-start;
-        gap: 8px;
-        animation: fadeIn 0.3s;
-      }
-
-      .feedback-result-banner.success {
-        display: flex;
-        background: rgba(5, 150, 105, 0.08);
-        border: 1px solid rgba(5, 150, 105, 0.2);
-        color: #047857;
-      }
-
-      .feedback-result-banner.error {
-        display: flex;
-        background: rgba(225, 29, 72, 0.08);
-        border: 1px solid rgba(225, 29, 72, 0.2);
-        color: #b91c1c;
       }
     </style>
   </head>
@@ -704,61 +511,11 @@
           <h1 class="brand-title">Where's My Family!!</h1>
         </div>
       </div>
-      <div class="header-right" style="display: flex; align-items: center; gap: 16px">
-        <button id="feedback-trigger" class="feedback-trigger-btn" onclick="openFeedbackModal()">
-          💬 Submit Feedback
-        </button>
-        <div class="status-badge">
-          <div class="status-dot"></div>
-          <span id="system-status">Live Tracking Active</span>
-        </div>
+      <div class="status-badge">
+        <div class="status-dot"></div>
+        <span id="system-status">Live Tracking Active</span>
       </div>
     </header>
-
-    <!-- Beautiful Backdrop-Blurred Feedback Modal -->
-    <div id="feedback-modal" class="feedback-modal">
-      <div class="feedback-content">
-        <div class="feedback-header">
-          <h2 class="feedback-title">💬 Submit Local Feedback</h2>
-          <button class="feedback-close" onclick="closeFeedbackModal()">✕</button>
-        </div>
-        <form onsubmit="submitFeedback(event)">
-          <div class="feedback-form-group">
-            <label class="feedback-label">Category</label>
-            <select id="feedback-category" class="feedback-select">
-              <option value="bug">🐛 Bug Report</option>
-              <option value="enhancement">⚡ Optimization / Enhancement</option>
-              <option value="duplicate">💡 Feature Request</option>
-              <option value="documentation">📝 Documentation</option>
-            </select>
-          </div>
-          <div class="feedback-form-group">
-            <label class="feedback-label">Issue Title</label>
-            <input
-              id="feedback-title"
-              type="text"
-              placeholder="e.g. Memory leak on Map trails"
-              class="feedback-input"
-              required
-            />
-          </div>
-          <div class="feedback-form-group">
-            <label class="feedback-label">Feedback Details / Body</label>
-            <textarea
-              id="feedback-desc"
-              rows="5"
-              placeholder="Please describe your optimization idea, bug, or feedback..."
-              class="feedback-textarea"
-              required
-            ></textarea>
-          </div>
-          <button id="feedback-submit" type="submit" class="feedback-submit-btn">
-            🚀 Submit Issue to GitHub
-          </button>
-          <div id="feedback-banner" class="feedback-result-banner"></div>
-        </form>
-      </div>
-    </div>
 
     <!-- Left Sidebar: Family Members List -->
     <div class="dashboard-container">
@@ -819,44 +576,10 @@
     </div>
 
     <script>
-      // Sovereign Vercel Database Connection Configuration
-      const MANTLE_DB_URL = 'https://project-6eady.vercel.app/api/locations';
+      // Sovereign Google Cloud Firestore Connection Configuration
+      const MANTLE_DB_URL =
+        'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
       const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
-
-      // --- Client-Side Cryptography Decryption Helpers ---
-      const DEFAULT_FAMILY_KEY = 'WheresMyFamilySecureKey2026';
-
-      function xorEncryptDecrypt(input, key) {
-        let output = '';
-        for (let i = 0; i < input.length; i++) {
-          const charCode = input.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-          output += String.fromCharCode(charCode);
-        }
-        return output;
-      }
-
-      function decryptString(hex, key = DEFAULT_FAMILY_KEY) {
-        if (!hex) return '';
-        let xor = '';
-        for (let i = 0; i < hex.length; i += 2) {
-          const charCode = parseInt(hex.substring(i, i + 2), 16);
-          if (!isNaN(charCode)) {
-            xor += String.fromCharCode(charCode);
-          }
-        }
-        return xorEncryptDecrypt(xor, key);
-      }
-
-      function decryptValue(hex, key = DEFAULT_FAMILY_KEY) {
-        try {
-          const decryptedStr = decryptString(hex, key);
-          if (!decryptedStr) return null;
-          return JSON.parse(decryptedStr);
-        } catch (e) {
-          console.warn('[Crypto] Failed to decrypt value:', e);
-          return null;
-        }
-      }
 
       let map;
       let markers = {};
@@ -971,27 +694,6 @@
           });
           const data = await response.json();
           if (data && !data.error) {
-            // Transparently decrypt E2EE location data
-            for (const key of Object.keys(data)) {
-              if (key.startsWith('_')) continue;
-              const m = data[key];
-              if (m && m.latEnc && m.lngEnc) {
-                const decLat = decryptValue(m.latEnc);
-                const decLng = decryptValue(m.lngEnc);
-                if (decLat !== null && decLng !== null) {
-                  m.latitude = decLat;
-                  m.longitude = decLng;
-                }
-                if (m.statusEnc) {
-                  const decStatus = decryptValue(m.statusEnc);
-                  if (decStatus !== null) m.status = decStatus;
-                }
-                if (m.trailEnc) {
-                  const decTrail = decryptValue(m.trailEnc);
-                  if (decTrail !== null) m.trail = decTrail;
-                }
-              }
-            }
             currentData = data;
             renderDashboard(data);
           }
@@ -1353,40 +1055,6 @@
         }
       }
 
-      // --- OSRM Route Cache Helpers ---
-      const ROUTE_CACHE_KEY = 'osrm_route_cache_v1';
-      const MAX_ROUTE_CACHE_ENTRIES = 150;
-
-      function getRouteCache() {
-        try {
-          const raw = localStorage.getItem(ROUTE_CACHE_KEY);
-          return raw ? JSON.parse(raw) : {};
-        } catch (e) {
-          console.warn('[OSRM Cache] Error loading route cache:', e);
-          return {};
-        }
-      }
-
-      function saveRouteToCache(hash, coords) {
-        try {
-          const cache = getRouteCache();
-          cache[hash] = coords;
-
-          // Prune cache if it grows too large (simple FIFO)
-          const keys = Object.keys(cache);
-          if (keys.length > MAX_ROUTE_CACHE_ENTRIES) {
-            const deleteCount = keys.length - MAX_ROUTE_CACHE_ENTRIES;
-            for (let i = 0; i < deleteCount; i++) {
-              delete cache[keys[i]];
-            }
-          }
-
-          localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(cache));
-        } catch (e) {
-          console.warn('[OSRM Cache] Error saving route cache:', e);
-        }
-      }
-
       // --- Fetch Snapped Trail Coordinates from OSRM Map-Matching or Routing API ---
       async function fetchSnappedTrail(points) {
         if (points.length < 2) return points;
@@ -1394,18 +1062,6 @@
         // Simplify points first to keep the tracepoint count low, preventing URL length issues
         // 0.00008 (~8 meters) tolerance filters out raw GPS jitter while preserving key turn points
         const simplified = simplifyRDP(points, 0.00008);
-
-        // Generate a unique coordinate route hash for caching
-        const hash = simplified
-          .map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`)
-          .join('|');
-
-        // Check persistent caching layer
-        const cache = getRouteCache();
-        if (cache[hash]) {
-          logToMapConsole(`[OSRM Cache]: Cache hit: utilizing cached snapped coordinate trail.`);
-          return cache[hash];
-        }
 
         // OSRM expects coordinates in [longitude,latitude] format separated by semicolons
         const coordsString = simplified.map((pt) => `${pt.longitude},${pt.latitude}`).join(';');
@@ -1420,12 +1076,10 @@
           if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
             const routeGeometry = data.routes[0].geometry;
             if (routeGeometry && routeGeometry.coordinates) {
-              const snapped = routeGeometry.coordinates.map((coord) => ({
+              return routeGeometry.coordinates.map((coord) => ({
                 latitude: coord[1],
                 longitude: coord[0],
               }));
-              saveRouteToCache(hash, snapped);
-              return snapped;
             }
           }
           logToMapConsole(
@@ -1444,12 +1098,10 @@
           if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
             const matchGeometry = data.matchings[0].geometry;
             if (matchGeometry && matchGeometry.coordinates) {
-              const snapped = matchGeometry.coordinates.map((coord) => ({
+              return matchGeometry.coordinates.map((coord) => ({
                 latitude: coord[1],
                 longitude: coord[0],
               }));
-              saveRouteToCache(hash, snapped);
-              return snapped;
             }
           }
         } catch (err) {
@@ -1770,79 +1422,6 @@
           hash += sName.charCodeAt(i);
         }
         return hash % 2 === 0 ? 'android' : 'ios';
-      }
-
-      // --- Feedback Dialog Management ---
-      function openFeedbackModal() {
-        const modal = document.getElementById('feedback-modal');
-        modal.classList.add('active');
-        document.getElementById('feedback-title').value = '';
-        document.getElementById('feedback-desc').value = '';
-        const banner = document.getElementById('feedback-banner');
-        banner.style.display = 'none';
-        banner.className = 'feedback-result-banner';
-      }
-
-      function closeFeedbackModal() {
-        const modal = document.getElementById('feedback-modal');
-        modal.classList.remove('active');
-      }
-
-      async function submitFeedback(event) {
-        event.preventDefault();
-        const titleInput = document.getElementById('feedback-title').value.trim();
-        const descInput = document.getElementById('feedback-desc').value.trim();
-        const category = document.getElementById('feedback-category').value;
-        const submitBtn = document.getElementById('feedback-submit');
-
-        if (!titleInput || !descInput) {
-          showFeedbackBanner('Please fill in all fields.', false);
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Creating issue... ⏳';
-
-        try {
-          const res = await fetch('http://localhost:3500/api/feedback', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: `[Feedback] ${titleInput}`,
-              body: `${descInput}\n\n---\n*Submitted via Whales Locator Web Dashboard*`,
-              label: category,
-            }),
-          });
-
-          const data = await res.json();
-          if (data && data.success) {
-            showFeedbackBanner(
-              `Success! Created issue: <a href="${data.url}" target="_blank" style="color: inherit; font-weight: bold; text-decoration: underline;">Link to GitHub Issue</a>`,
-              true
-            );
-            document.getElementById('feedback-title').value = '';
-            document.getElementById('feedback-desc').value = '';
-          } else {
-            showFeedbackBanner(data.error || 'Failed to connect to local issue service.', false);
-          }
-        } catch (e) {
-          showFeedbackBanner(
-            'Local feedback server is offline. Run "npm run feedback-server" on your machine to submit issues natively!',
-            false
-          );
-        } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '🚀 Submit Issue to GitHub';
-        }
-      }
-
-      function showFeedbackBanner(msg, isSuccess) {
-        const banner = document.getElementById('feedback-banner');
-        banner.style.display = 'flex';
-        banner.className = `feedback-result-banner ${isSuccess ? 'success' : 'error'}`;
-        banner.innerHTML = `<span style="font-size: 16px;">${isSuccess ? '✅' : '❌'}</span> <div>${msg}</div>`;
       }
 
       // Run On Boot
