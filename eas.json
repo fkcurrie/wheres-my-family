@@ -21,6 +21,10 @@
       "ios": {
         "appleTeamId": "LSV2MNUNZ8",
         "ascAppId": "6780024343"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./pc-api-key.json",
+        "track": "internal"
       }
     }
   }

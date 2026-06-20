@@ -5,9 +5,11 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.0",
+    "expo-background-fetch": "~14.0.9",
     "expo-battery": "~10.0.8",
     "expo-insights": "~0.10.8",
     "expo-location": "~19.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "~14.0.9",
     "expo-updates": "~29.0.18",
@@ -34,8 +36,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build": "mkdir -p public && cp web-dashboard/index.html public/index.html && cp dashboard.html public/dashboard.html"
-
+    "build": "mkdir -p public && cp web-dashboard/index.html public/index.html && cp dashboard.html public/dashboard.html",
+    "feedback-server": "node scratch/feedback_server.js"
   },
   "private": true
 }

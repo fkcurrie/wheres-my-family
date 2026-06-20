@@ -52,3 +52,11 @@ web-dashboard/.vercel/
 
 # Logs
 *.log
+
+# Credentials and Keys
+pc-api-key.json
+android_keystore_base64.txt
+scratch/
+*.xml
+
+

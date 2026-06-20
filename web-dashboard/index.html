@@ -20,7 +20,6 @@
     <!-- Vercel Speed Insights (Static HTML Integration) -->
     <script src="/_vercel/speed-insights/script.js" defer></script>
 
-
     <style>
       /* Premium CSS Variables and Styling System */
       :root {
@@ -580,10 +579,9 @@
     </div>
 
     <script>
-      // MantleDB Connection Configuration
-      const MANTLE_DB_URL = 'https://mantledb.sh/v2/wheresmyfamily-fkctors/all_locations';
+      // Sovereign Google Cloud Firestore Connection Configuration
+      const MANTLE_DB_URL = 'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
       const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
-
 
       let map;
       let markers = {};
@@ -766,7 +764,10 @@
                 ${name.charAt(0).toUpperCase()}
               </div>
               <div class="member-identity">
-                <h3>${name}</h3>
+                <h3 style="display: flex; align-items: center; gap: 6px;">
+                  ${name}
+                  ${getPlatformIconHTML(m, name)}
+                </h3>
                 <div class="member-device-status">
                   <div class="mini-status-dot ${m.deviceStatus === 'Active' ? 'active' : 'inactive'}"></div>
                   <span class="device-status-text">${m.deviceStatus || 'Active'}</span>
@@ -833,14 +834,16 @@
       }
 
       // --- Haversine Distance Helper ---
-      function getDistanceInMiles(lat1, lon1, lat2, lon2) {
-        const R = 3958.8; // Earth radius in miles
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = 
+      function getDistanceInKm(lat1, lon1, lat2, lon2) {
+        const R = 6371.0; // Earth radius in kilometers
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
       }
@@ -848,56 +851,62 @@
       // --- Chronological Trail Sorter & GPS Jump Speed-Filter ---
       function cleanAndSortTrail(rawTrail) {
         if (!rawTrail || rawTrail.length === 0) return [];
-        
+
         // 1. Filter out invalid/empty coordinates
-        const validPoints = rawTrail.filter(pt => 
-          pt && 
-          typeof pt.latitude === 'number' && 
-          typeof pt.longitude === 'number' &&
-          pt.latitude !== 0 &&
-          pt.longitude !== 0
+        const validPoints = rawTrail.filter(
+          (pt) =>
+            pt &&
+            typeof pt.latitude === 'number' &&
+            typeof pt.longitude === 'number' &&
+            pt.latitude !== 0 &&
+            pt.longitude !== 0
         );
-        
+
         if (validPoints.length <= 1) return validPoints;
-        
+
         // 2. Sort chronologically by timestamp
         validPoints.sort((a, b) => {
           const t1 = a.timestamp || 0;
           const t2 = b.timestamp || 0;
           return t1 - t2;
         });
-        
+
         // 3. Cluster points into sequential "chains" to separate interleaved devices/streams
         const chains = [];
-        
+
         for (const pt of validPoints) {
           let bestChain = null;
           let minDistance = Infinity;
-          
+
           for (const chain of chains) {
             const lastPt = chain[chain.length - 1];
-            const dist = getDistanceInMiles(lastPt.latitude, lastPt.longitude, pt.latitude, pt.longitude);
+            const dist = getDistanceInKm(
+              lastPt.latitude,
+              lastPt.longitude,
+              pt.latitude,
+              pt.longitude
+            );
             const dtMs = (pt.timestamp || 0) - (lastPt.timestamp || 0);
-            
+
             // Speed check
             let isSpeedReasonable = false;
             if (dtMs > 0) {
               const dtHours = dtMs / (1000 * 60 * 60);
-              const speedMph = dist / dtHours;
-              if (speedMph <= 120) {
+              const speedKmh = dist / dtHours;
+              if (speedKmh <= 190) {
                 isSpeedReasonable = true;
               }
             } else if (dtMs === 0) {
               // Same timestamp: allow if extremely close spatially (duplicate/sync overlap)
-              if (dist < 0.02) {
+              if (dist < 0.03) {
                 isSpeedReasonable = true;
               }
             }
-            
-            // Spatial proximity check (bypass speed filter if consecutive points are within 0.5 miles)
+
+            // Spatial proximity check (bypass speed filter if consecutive points are within 0.8 km)
             // This perfectly supports fast-playback simulations without merging interleaved devices
-            const isSpatiallyClose = dist < 0.5; // 0.5 miles
-            
+            const isSpatiallyClose = dist < 0.8; // 0.8 km
+
             if (isSpeedReasonable || isSpatiallyClose) {
               if (dist < minDistance) {
                 minDistance = dist;
@@ -905,7 +914,7 @@
               }
             }
           }
-          
+
           if (bestChain) {
             bestChain.push(pt);
           } else {
@@ -913,67 +922,81 @@
             chains.push([pt]);
           }
         }
-        
+
         // 4. Select and assemble chains
         // Filter out single-point chains as noise
-        const validChains = chains.filter(c => c.length >= 2);
+        const validChains = chains.filter((c) => c.length >= 2);
         if (validChains.length === 0) {
           return chains.length > 0 ? chains[0] : [];
         }
-        
+
         // Calculate characteristics for each chain
         const processedChains = [];
         for (const chain of validChains) {
           let maxSpanDist = 0;
           for (const pt of chain) {
-            const dist = getDistanceInMiles(chain[0].latitude, chain[0].longitude, pt.latitude, pt.longitude);
+            const dist = getDistanceInKm(
+              chain[0].latitude,
+              chain[0].longitude,
+              pt.latitude,
+              pt.longitude
+            );
             if (dist > maxSpanDist) maxSpanDist = dist;
           }
-          
+
           let totalDist = 0;
           for (let i = 0; i < chain.length - 1; i++) {
-            totalDist += getDistanceInMiles(chain[i].latitude, chain[i].longitude, chain[i+1].latitude, chain[i+1].longitude);
+            totalDist += getDistanceInKm(
+              chain[i].latitude,
+              chain[i].longitude,
+              chain[i + 1].latitude,
+              chain[i + 1].longitude
+            );
           }
-          
+
           chain.maxSpanDist = maxSpanDist;
           chain.cumulativeDistance = totalDist;
           chain.startTime = chain[0].timestamp;
           chain.endTime = chain[chain.length - 1].timestamp;
           processedChains.push(chain);
         }
-        
+
         // Filter out stationary simultaneous noise chains (e.g. tablet left at home)
-        const hasActiveMovingChain = processedChains.some(c => c.maxSpanDist > 0.2);
-        
+        const hasActiveMovingChain = processedChains.some((c) => c.maxSpanDist > 0.32);
+
         let finalChains = processedChains;
         if (hasActiveMovingChain) {
-          finalChains = processedChains.filter(c => {
-            if (c.maxSpanDist > 0.05) return true; // Keep if moving
-            
+          finalChains = processedChains.filter((c) => {
+            if (c.maxSpanDist > 0.08) return true; // Keep if moving
+
             // Stationary. Check if it overlaps with an active moving chain
-            const overlaps = processedChains.some(mc => {
-              if (mc === c || mc.maxSpanDist <= 0.05) return false;
+            const overlaps = processedChains.some((mc) => {
+              if (mc === c || mc.maxSpanDist <= 0.08) return false;
               // Overlaps in time with a buffer of 10s
-              return (c.startTime >= mc.startTime - 10000 && c.startTime <= mc.endTime + 10000) ||
-                     (c.endTime >= mc.startTime - 10000 && c.endTime <= mc.endTime + 10000);
+              return (
+                (c.startTime >= mc.startTime - 10000 && c.startTime <= mc.endTime + 10000) ||
+                (c.endTime >= mc.startTime - 10000 && c.endTime <= mc.endTime + 10000)
+              );
             });
-            
+
             if (overlaps) {
-              logToMapConsole(`[De-interleaving]: Filtered out static home-device pollution at [${c[0].latitude.toFixed(4)}, ${c[0].longitude.toFixed(4)}] during active movement.`);
+              logToMapConsole(
+                `[De-interleaving]: Filtered out static home-device pollution at [${c[0].latitude.toFixed(4)}, ${c[0].longitude.toFixed(4)}] during active movement.`
+              );
               return false;
             }
             return true;
           });
         }
-        
+
         // Sort final chains by start time to maintain overall chronological structure
         finalChains.sort((a, b) => a.startTime - b.startTime);
-        
+
         const result = [];
         for (const chain of finalChains) {
           result.push(...chain);
         }
-        
+
         return result;
       }
 
@@ -981,19 +1004,21 @@
       function getPerpendicularDistance(pt, lineStart, lineEnd) {
         const dx = lineEnd.longitude - lineStart.longitude;
         const dy = lineEnd.latitude - lineStart.latitude;
-        
+
         if (dx === 0 && dy === 0) {
           return Math.sqrt(
             Math.pow(pt.latitude - lineStart.latitude, 2) +
-            Math.pow(pt.longitude - lineStart.longitude, 2)
+              Math.pow(pt.longitude - lineStart.longitude, 2)
           );
         }
-        
-        const t = ((pt.longitude - lineStart.longitude) * dx + (pt.latitude - lineStart.latitude) * dy) / (dx * dx + dy * dy);
-        
+
+        const t =
+          ((pt.longitude - lineStart.longitude) * dx + (pt.latitude - lineStart.latitude) * dy) /
+          (dx * dx + dy * dy);
+
         let nearestX = lineStart.longitude + t * dx;
         let nearestY = lineStart.latitude + t * dy;
-        
+
         if (t < 0) {
           nearestX = lineStart.longitude;
           nearestY = lineStart.latitude;
@@ -1001,21 +1026,20 @@
           nearestX = lineEnd.longitude;
           nearestY = lineEnd.latitude;
         }
-        
+
         return Math.sqrt(
-          Math.pow(pt.longitude - nearestX, 2) +
-          Math.pow(pt.latitude - nearestY, 2)
+          Math.pow(pt.longitude - nearestX, 2) + Math.pow(pt.latitude - nearestY, 2)
         );
       }
 
       // --- Ramer-Douglas-Peucker (RDP) Simplification Algorithm ---
       function simplifyRDP(points, epsilon) {
         if (points.length <= 2) return points;
-        
+
         let dmax = 0;
         let index = 0;
         const end = points.length - 1;
-        
+
         for (let i = 1; i < end; i++) {
           const d = getPerpendicularDistance(points[i], points[0], points[end]);
           if (d > dmax) {
@@ -1023,7 +1047,7 @@
             dmax = d;
           }
         }
-        
+
         if (dmax > epsilon) {
           const results1 = simplifyRDP(points.slice(0, index + 1), epsilon);
           const results2 = simplifyRDP(points.slice(index), epsilon);
@@ -1036,54 +1060,59 @@
       // --- Fetch Snapped Trail Coordinates from OSRM Map-Matching or Routing API ---
       async function fetchSnappedTrail(points) {
         if (points.length < 2) return points;
-        
+
         // Simplify points first to keep the tracepoint count low, preventing URL length issues
         // 0.00008 (~8 meters) tolerance filters out raw GPS jitter while preserving key turn points
         const simplified = simplifyRDP(points, 0.00008);
-        
+
         // OSRM expects coordinates in [longitude,latitude] format separated by semicolons
-        const coordsString = simplified.map(pt => `${pt.longitude},${pt.latitude}`).join(';');
-        
+        const coordsString = simplified.map((pt) => `${pt.longitude},${pt.latitude}`).join(';');
+
         // 1. Try OSRM Routing API first: It ALWAYS guarantees a continuous, connected route
         const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-        
+
         try {
           const response = await fetch(routeUrl);
           const data = await response.json();
-          
+
           if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
             const routeGeometry = data.routes[0].geometry;
             if (routeGeometry && routeGeometry.coordinates) {
-              return routeGeometry.coordinates.map(coord => ({
+              return routeGeometry.coordinates.map((coord) => ({
                 latitude: coord[1],
-                longitude: coord[0]
+                longitude: coord[0],
               }));
             }
           }
-          logToMapConsole(`[OSRM Route Info]: Routing not possible for some coordinates. Trying fallback matching.`);
+          logToMapConsole(
+            `[OSRM Route Info]: Routing not possible for some coordinates. Trying fallback matching.`
+          );
         } catch (err) {
           logToMapConsole(`[OSRM Route Error]: Failed to fetch routed trail: ${err.message}`, true);
         }
-        
+
         // 2. Fallback to OSRM Map-Matching API if routing fails (or is unavailable)
         const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
         try {
           const response = await fetch(matchUrl);
           const data = await response.json();
-          
+
           if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
             const matchGeometry = data.matchings[0].geometry;
             if (matchGeometry && matchGeometry.coordinates) {
-              return matchGeometry.coordinates.map(coord => ({
+              return matchGeometry.coordinates.map((coord) => ({
                 latitude: coord[1],
-                longitude: coord[0]
+                longitude: coord[0],
               }));
             }
           }
         } catch (err) {
-          logToMapConsole(`[OSRM Match Error]: Failed to fetch snapped trail: ${err.message}`, true);
+          logToMapConsole(
+            `[OSRM Match Error]: Failed to fetch snapped trail: ${err.message}`,
+            true
+          );
         }
-        
+
         // 3. Graceful fallback to the simplified raw trail if both APIs fail
         return simplified;
       }
@@ -1094,23 +1123,23 @@
         const limit = 24 * 60 * 60 * 1000; // 24 hours in ms
         const safeAgeMs = isNaN(ageMs) ? 0 : Math.max(0, Math.min(limit, ageMs));
         const ratio = safeAgeMs / limit;
-        
+
         // Emerald Green: rgb(34, 197, 94) -> R=34, G=197, B=94
         // Vibrant Red: rgb(239, 68, 68) -> R=239, G=68, B=68
         const r = Math.round(34 + (239 - 34) * ratio);
         const g = Math.round(197 + (68 - 197) * ratio);
         const b = Math.round(94 + (68 - 94) * ratio);
-        
+
         return {
           solid: `rgb(${r}, ${g}, ${b})`,
-          glow: `rgba(${r}, ${g}, ${b}, 0.25)`
+          glow: `rgba(${r}, ${g}, ${b}, 0.25)`,
         };
       }
 
       // Retrieve the timestamp for a given coordinate by finding the closest point in the raw trail
       function getCoordinateTimestamp(coord, rawTrail, index, total) {
         // Helper to parse any format of timestamp safely to numeric millisecond Epoch
-        const parseTimestamp = function(val) {
+        const parseTimestamp = function (val) {
           if (!val) return null;
           const num = Number(val);
           if (!isNaN(num) && num > 0) {
@@ -1130,11 +1159,11 @@
           const ts = parseTimestamp(rawTrail[index].timestamp);
           if (ts !== null) return ts;
         }
-        
+
         if (rawTrail && rawTrail.length > 0) {
           let minDistance = Infinity;
           let closestTimestamp = null;
-          
+
           // Set first valid timestamp as standard baseline fallback
           for (const pt of rawTrail) {
             const ts = parseTimestamp(pt.timestamp);
@@ -1143,21 +1172,23 @@
               break;
             }
           }
-          
+
           for (const pt of rawTrail) {
             const ts = parseTimestamp(pt.timestamp);
             if (ts === null) continue;
-            
-            const dist = Math.pow(pt.latitude - coord.latitude, 2) + Math.pow(pt.longitude - coord.longitude, 2);
+
+            const dist =
+              Math.pow(pt.latitude - coord.latitude, 2) +
+              Math.pow(pt.longitude - coord.longitude, 2);
             if (dist < minDistance) {
               minDistance = dist;
               closestTimestamp = ts;
             }
           }
-          
+
           if (closestTimestamp !== null) return closestTimestamp;
         }
-        
+
         // Fallback to relative index ratio if rawTrail is missing timestamps or empty
         const limit = 24 * 60 * 60 * 1000;
         const ratio = index / (total > 1 ? total - 1 : 1);
@@ -1170,33 +1201,33 @@
         for (let i = 0; i < coordinates.length - 1; i++) {
           const pt1 = coordinates[i];
           const pt2 = coordinates[i + 1];
-          
+
           const ts1 = getCoordinateTimestamp(pt1, rawTrail, i, coordinates.length);
           const ts2 = getCoordinateTimestamp(pt2, rawTrail, i + 1, coordinates.length);
           const avgTimestamp = (ts1 + ts2) / 2;
           const ageMs = Math.max(0, Date.now() - avgTimestamp);
-          
+
           const colors = interpolateTrailColor(ageMs);
-          
+
           features.push({
             type: 'Feature',
             geometry: {
               type: 'LineString',
               coordinates: [
                 [pt1.longitude, pt1.latitude],
-                [pt2.longitude, pt2.latitude]
-              ]
+                [pt2.longitude, pt2.latitude],
+              ],
             },
             properties: {
               solidColor: colors.solid,
-              glowColor: colors.glow
-            }
+              glowColor: colors.glow,
+            },
           });
         }
-        
+
         return {
           type: 'FeatureCollection',
-          features: features
+          features: features,
         };
       }
 
@@ -1206,11 +1237,11 @@
         const sourceId = `trail-source-${name}`;
         const glowLayerId = `trail-glow-layer-${name}`;
         const solidLayerId = `trail-solid-layer-${name}`;
-        
+
         if (map.getLayer(glowLayerId)) map.removeLayer(glowLayerId);
         if (map.getLayer(solidLayerId)) map.removeLayer(solidLayerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
-        
+
         delete lastTrailHashes[name];
         delete snappedTrails[name];
       }
@@ -1218,14 +1249,16 @@
       // Asynchronously handle OSRM fetching and rendering with color gradients
       async function updateMemberTrailOnMap(name, rawTrail) {
         if (!map) return;
-        
+
         const cleanedTrail = cleanAndSortTrail(rawTrail);
         if (!cleanedTrail || cleanedTrail.length < 2) {
           removeMemberTrailFromMap(name);
           return;
         }
 
-        const hash = cleanedTrail.map(pt => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const hash = cleanedTrail
+          .map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`)
+          .join('|');
         const prevHash = lastTrailHashes[name];
 
         let snapped;
@@ -1250,7 +1283,7 @@
           } else {
             map.addSource(sourceId, {
               type: 'geojson',
-              data: geojson
+              data: geojson,
             });
 
             // Outer subtle glow layer
@@ -1265,7 +1298,7 @@
               paint: {
                 'line-color': ['get', 'glowColor'],
                 'line-width': 8,
-                'line-blur': 1
+                'line-blur': 1,
               },
             });
 
@@ -1280,7 +1313,7 @@
               },
               paint: {
                 'line-color': ['get', 'solidColor'],
-                'line-width': 3
+                'line-width': 3,
               },
             });
           }
@@ -1345,7 +1378,10 @@
       function getPopupHTML(name, m) {
         return `
         <div class="popup-content">
-          <h4>${name}</h4>
+          <h4 style="display: flex; align-items: center; gap: 6px;">
+            ${name}
+            ${getPlatformIconHTML(m, name)}
+          </h4>
           <p>📍 Status: ${m.status || 'Active'}</p>
           <p>🔋 Battery: ${m.battery || 100}% ${m.charging ? '(Charging)' : ''}</p>
           ${m.weatherTemp !== undefined ? `<p>🌡️ Weather: ${m.weatherEmoji || ''} ${m.weatherTemp}°C (${m.weatherDesc})</p>` : ''}
@@ -1361,6 +1397,33 @@
           hash += name.charCodeAt(i);
         }
         return colors[Math.abs(hash) % colors.length];
+      }
+
+      // Platform icon HTML builder
+      function getPlatformIconHTML(m, name) {
+        const platform = m.platform || getFallbackPlatform(name);
+        if (platform === 'android') {
+          return `
+          <svg style="color: #3ddc84; width: 14px; height: 14px; flex-shrink: 0;" viewBox="0 0 24 24" fill="currentColor" aria-label="Android">
+            <path d="M17.52 12a1.24 1.24 0 1 1-1.24-1.24 1.24 1.24 0 0 1 1.24 1.24zM8.96 10.76A1.24 1.24 0 1 0 10.2 12a1.24 1.24 0 0 0-1.24-1.24zM12 5a7.84 7.84 0 0 0-6.16 3h12.32A7.84 7.84 0 0 0 12 5zm5.72-1.9l1.15-2a.37.37 0 0 0-.13-.5.37.37 0 0 0-.5.13l-1.17 2a8.61 8.61 0 0 0-6.14 0l-1.17-2a.37.37 0 0 0-.5-.13.37.37 0 0 0-.13.5l1.15 2A8.44 8.68 0 0 0 3 11h18a8.44 8.68 0 0 0-3.28-7.9z" />
+          </svg>`;
+        } else if (platform === 'ios') {
+          return `
+          <svg style="color: #64748b; width: 14px; height: 14px; flex-shrink: 0;" viewBox="0 0 24 24" fill="currentColor" aria-label="iOS">
+            <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 17 2.94 12.45 4.7 9.39C5.57 7.87 7.13 6.91 8.82 6.88C10.1 6.85 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.91 18.39 7.14 19.59 9.82C19.49 9.88 17.5 10.97 17.52 13.51C17.55 16.56 20.18 17.58 20.21 17.59C20.19 17.65 19.78 18.96 18.71 19.5M15.97 4.17C16.63 3.37 17.07 2.28 16.95 1C16 1.05 14.9 1.61 14.25 2.41C13.68 3.19 13.19 4.31 13.34 5.56C14.39 5.64 15.4 5.02 15.97 4.17Z" />
+          </svg>`;
+        }
+        return '';
+      }
+
+      // Stable hash based platform fallback
+      function getFallbackPlatform(name) {
+        let hash = 0;
+        const sName = name || '';
+        for (let i = 0; i < sName.length; i++) {
+          hash += sName.charCodeAt(i);
+        }
+        return hash % 2 === 0 ? 'android' : 'ios';
       }
 
       // Run On Boot

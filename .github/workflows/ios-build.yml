@@ -1,0 +1,79 @@
+name: Compile iOS TestFlight Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers automatically when pushing a version tag
+  workflow_dispatch: # Allows triggering manually from the GitHub UI
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+
+      - name: Prebuild Native iOS
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Install Apple Certificate & Profile
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Import Provisioning Profile
+        uses: apple-actions/run-provisioning-profile@v1
+        with:
+          profile-base64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+
+      - name: Build & Package iOS App
+        run: |
+          cd ios
+          xcodebuild -workspace wheresmyfamily.xcworkspace \
+                     -scheme wheresmyfamily \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath $PWD/build/wheresmyfamily.xcarchive \
+                     archive
+          
+          xcodebuild -exportArchive \
+                     -archivePath $PWD/build/wheresmyfamily.xcarchive \
+                     -exportOptionsPlist ExportOptions.plist \
+                     -exportPath $PWD/build/out
+
+      - name: Upload to App Store Connect (TestFlight)
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+        run: |
+          # Write ASC Private Key to local file
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY_CONTENT" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          
+          # Upload via Apple Transporter tool
+          xcrun altool --upload-app \
+                       -f ios/build/out/wheresmyfamily.ipa \
+                       -t ios \
+                       --apiKey "$ASC_KEY_ID" \
+                       --apiIssuer "$ASC_ISSUER_ID"

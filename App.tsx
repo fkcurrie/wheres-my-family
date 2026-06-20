@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Platform,
   Alert,
-  TextInput,
   Share,
   AppState,
   Vibration,
@@ -16,671 +14,118 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import * as Battery from 'expo-battery';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import * as BackgroundFetch from 'expo-background-fetch';
+import MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ShieldAlert, Share2, RefreshCw, Info, MessageSquare } from 'lucide-react-native';
+
+// --- Modular Service & Component Imports ---
+import { addDiagnosticLog } from './src/services/Logger';
+import { checkAndHandleNudge, requestNotificationPermissions } from './src/services/Notifications';
+import { cleanAndSortTrail, fetchSnappedTrail, updateAndGetLocalTrail } from './src/services/OSRM';
 import {
-  ShieldAlert,
-  Battery as BatteryIcon,
-  RefreshCw,
-  Navigation,
-  Info,
-  Share2,
-} from 'lucide-react-native';
-// Remove static expo-observe import to prevent native module crashes on standard Expo Go
+  fetchMantleDB,
+  publishLocation,
+  requestNudgeMember,
+  deleteMember,
+  clearNudgeState,
+} from './src/services/MantleDB';
+import { getDistanceInKm } from './src/services/Helpers';
+import { FamilyMember, TrailCoord } from './src/types';
 
+import Onboarding from './src/components/Onboarding';
+import FamilyList from './src/components/FamilyList';
+import MapViewContainer from './src/components/MapViewContainer';
+import LogTerminal from './src/components/LogTerminal';
+import FeedbackModal from './src/components/FeedbackModal';
+
+// --- Background Task Names ---
 const LOCATION_TRACKING_TASK_NAME = 'background-location-task';
-const MANTLE_DB_URL = 'https://mantledb.sh/v2/wheresmyfamily-fkctors/all_locations';
-const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+const BACKGROUND_FETCH_TASK_NAME = 'background-fetch-nudge-task';
 
-// --- Global Diagnostic Triage Logger ---
-const addDiagnosticLog = async (msg: string) => {
-  const timestamp = new Date().toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const formatted = `[${timestamp}] ${msg}`;
-  console.log(formatted);
+// --- Global References for Stale Closure Prevention in Tasks ---
+const globalStateRef = {
+  userName: null as string | null,
+};
+
+// --- Background Fetch Task Definition ---
+TaskManager.defineTask(BACKGROUND_FETCH_TASK_NAME, async () => {
   try {
-    const raw = await AsyncStorage.getItem('diagnostic_logs');
-    let logs = raw ? JSON.parse(raw) : [];
-    logs.unshift(formatted); // Add to beginning (latest logs first)
-    if (logs.length > 80) {
-      logs = logs.slice(0, 80); // Cap at 80 items to avoid storing too much data
+    const savedName = globalStateRef.userName || (await AsyncStorage.getItem('user_name'));
+    if (savedName) {
+      const nudgeTriggered = await checkAndHandleNudge(savedName);
+      return nudgeTriggered
+        ? BackgroundFetch.BackgroundFetchResult.NewData
+        : BackgroundFetch.BackgroundFetchResult.NoData;
     }
-    await AsyncStorage.setItem('diagnostic_logs', JSON.stringify(logs));
-  } catch (e) {
-    console.warn('Error saving diagnostic log:', e);
+  } catch (err) {
+    console.error('[Background Fetch Task Error]:', err);
+    return BackgroundFetch.BackgroundFetchResult.Failed;
   }
-};
+  return BackgroundFetch.BackgroundFetchResult.NoData;
+});
 
-// --- Haversine Formula Helper for Distance ---
-const getDistanceInMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 3958.8; // Radius of the Earth in miles
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
+// --- Speed-Adaptive Tracking Controller ---
+/**
+ * Dynamic battery-aware speed tracking controller.
+ * Scales tracking resolution based on current movement speed (e.g. driving vs. walking/stationary).
+ * @param speed Current speed in meters per second (1 m/s = 3.6 km/h)
+ */
+export const updateBackgroundTrackingMode = async (speed: number) => {
+  try {
+    const isMovingFast = speed > 8; // Speed > 8 m/s (~29 km/h) is considered driving
+    const currentMode = await AsyncStorage.getItem('tracking_mode');
+    const targetMode = isMovingFast ? 'fast' : 'standard';
 
-// --- Spatial-Chaining De-interleaving Algorithm for Trail Cleaning ---
-const cleanAndSortTrail = (rawTrail: any[] | undefined): any[] => {
-  if (!rawTrail || rawTrail.length === 0) return [];
-  
-  // 1. Filter out invalid/empty coordinates
-  const validPoints = rawTrail.filter(
-    (pt) =>
-      pt &&
-      typeof pt.latitude === 'number' &&
-      typeof pt.longitude === 'number' &&
-      pt.latitude !== 0 &&
-      pt.longitude !== 0
-  );
-  
-  if (validPoints.length <= 1) return validPoints;
-  
-  // 2. Sort chronologically by timestamp
-  validPoints.sort((a, b) => {
-    const t1 = a.timestamp || 0;
-    const t2 = b.timestamp || 0;
-    return t1 - t2;
-  });
-  
-  // 3. Cluster points into sequential "chains" to separate interleaved devices/streams
-  const chains: any[][] = [];
-  
-  for (const pt of validPoints) {
-    let bestChain: any[] | null = null;
-    let minDistance = Infinity;
-    
-    for (const chain of chains) {
-      const lastPt = chain[chain.length - 1];
-      const dist = getDistanceInMiles(lastPt.latitude, lastPt.longitude, pt.latitude, pt.longitude);
-      const dtMs = (pt.timestamp || 0) - (lastPt.timestamp || 0);
-      
-      // Speed check
-      let isSpeedReasonable = false;
-      if (dtMs > 0) {
-        const dtHours = dtMs / (1000 * 60 * 60);
-        const speedMph = dist / dtHours;
-        if (speedMph <= 120) {
-          isSpeedReasonable = true;
-        }
-      } else if (dtMs === 0) {
-        // Same timestamp: allow if extremely close spatially (duplicate/sync overlap)
-        if (dist < 0.02) {
-          isSpeedReasonable = true;
-        }
-      }
-      
-      // Spatial proximity check (bypass speed filter if consecutive points are within 0.5 miles)
-      const isSpatiallyClose = dist < 0.5; // 0.5 miles
-      
-      if (isSpeedReasonable || isSpatiallyClose) {
-        if (dist < minDistance) {
-          minDistance = dist;
-          bestChain = chain;
-        }
-      }
+    if (currentMode === targetMode) {
+      return; // Already configured in correct mode
     }
-    
-    if (bestChain) {
-      bestChain.push(pt);
-    } else {
-      // Create a new chain
-      chains.push([pt]);
-    }
-  }
-  
-  // 4. Select and assemble chains
-  // Filter out single-point chains as noise
-  const validChains = chains.filter((c) => c.length >= 2);
-  if (validChains.length === 0) {
-    return chains.length > 0 ? chains[0] : [];
-  }
-  
-  // Calculate characteristics for each chain
-  const processedChains: any[] = [];
-  for (const chain of validChains) {
-    let maxSpanDist = 0;
-    for (const pt of chain) {
-      const dist = getDistanceInMiles(chain[0].latitude, chain[0].longitude, pt.latitude, pt.longitude);
-      if (dist > maxSpanDist) maxSpanDist = dist;
-    }
-    
-    let totalDist = 0;
-    for (let i = 0; i < chain.length - 1; i++) {
-      totalDist += getDistanceInMiles(chain[i].latitude, chain[i].longitude, chain[i + 1].latitude, chain[i + 1].longitude);
-    }
-    
-    // Attach custom properties to the array object
-    (chain as any).maxSpanDist = maxSpanDist;
-    (chain as any).cumulativeDistance = totalDist;
-    (chain as any).startTime = chain[0].timestamp;
-    (chain as any).endTime = chain[chain.length - 1].timestamp;
-    processedChains.push(chain);
-  }
-  
-  // Filter out stationary simultaneous noise chains (e.g. tablet left at home)
-  const hasActiveMovingChain = processedChains.some((c) => (c as any).maxSpanDist > 0.2);
-  
-  let finalChains = processedChains;
-  if (hasActiveMovingChain) {
-    finalChains = processedChains.filter((c) => {
-      if ((c as any).maxSpanDist > 0.05) return true; // Keep if moving
-      
-      // Stationary. Check if it overlaps with an active moving chain
-      const overlaps = processedChains.some((mc) => {
-        if (mc === c || (mc as any).maxSpanDist <= 0.05) return false;
-        // Overlaps in time with a buffer of 10s
-        return (
-          ((c as any).startTime >= (mc as any).startTime - 10000 && (c as any).startTime <= (mc as any).endTime + 10000) ||
-          ((c as any).endTime >= (mc as any).startTime - 10000 && (c as any).endTime <= (mc as any).endTime + 10000)
-        );
+
+    await AsyncStorage.setItem('tracking_mode', targetMode);
+    await addDiagnosticLog(
+      `[Adaptive GPS] Speed: ${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h). Reconfiguring background location to ${targetMode.toUpperCase()} mode.`
+    );
+
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
+    if (isRegistered) {
+      const options = isMovingFast
+        ? {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 5000, // 5s interval when driving
+            distanceInterval: 5, // 5m precision when driving
+            deferredUpdatesInterval: 5000,
+            deferredUpdatesDistance: 5,
+          }
+        : {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 30000, // 30s standard interval
+            distanceInterval: 50, // 50m standard precision
+            deferredUpdatesInterval: 30000,
+            deferredUpdatesDistance: 50,
+          };
+
+      await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
+        ...options,
+        pausesUpdatesAutomatically: false,
+        activityType: Location.ActivityType.AutomotiveNavigation,
+        foregroundService: {
+          notificationTitle: "Where's my family!! Active",
+          notificationBody: isMovingFast
+            ? '🚀 Fast tracking active (Driving Mode enabled).'
+            : 'Sharing your live location with your family in the background.',
+          notificationColor: '#e11d48',
+          killServiceOnDestroy: false,
+        },
+        showsBackgroundLocationIndicator: true,
       });
-      
-      if (overlaps) {
-        addDiagnosticLog(`[De-interleaving] Filtered out static home-device pollution at [${c[0].latitude.toFixed(4)}, ${c[0].longitude.toFixed(4)}] during active movement.`).catch((err) => console.warn(err));
-        return false;
-      }
-      return true;
-    });
-  }
-  
-  // Sort final chains by start time to maintain overall chronological structure
-  finalChains.sort((a, b) => (a as any).startTime - (b as any).startTime);
-  
-  const result: any[] = [];
-  for (const chain of finalChains) {
-    result.push(...chain);
-  }
-  
-  return result;
-};
-
-// --- Gradient Trail Helpers ---
-// Interpolate color from Emerald Green (most recent) to Vibrant Red (approaching 24h old)
-const interpolateTrailColor = (ageMs: number): { solid: string; glow: string } => {
-  const limit = 24 * 60 * 60 * 1000; // 24 hours in ms
-  const safeAgeMs = isNaN(ageMs) ? 0 : Math.max(0, Math.min(limit, ageMs));
-  const ratio = safeAgeMs / limit;
-  
-  // Emerald Green: rgb(34, 197, 94) -> R=34, G=197, B=94
-  // Vibrant Red: rgb(239, 68, 68) -> R=239, G=68, B=68
-  const r = Math.round(34 + (239 - 34) * ratio);
-  const g = Math.round(197 + (68 - 197) * ratio);
-  const b = Math.round(94 + (68 - 94) * ratio);
-  
-  return {
-    solid: `rgb(${r}, ${g}, ${b})`,
-    glow: `rgba(${r}, ${g}, ${b}, 0.25)`
-  };
-};
-
-// Retrieve the timestamp for a given coordinate by finding the closest point in the raw trail (since OSRM matching strips timestamps)
-const getCoordinateTimestamp = (
-  coord: { latitude: number; longitude: number },
-  rawTrail: any[] | undefined,
-  index: number,
-  total: number
-): number => {
-  // Helper to parse any format of timestamp (string, number, ISO) safely to numeric millisecond Epoch
-  const parseTimestamp = (val: any): number | null => {
-    if (!val) return null;
-    const num = Number(val);
-    if (!isNaN(num) && num > 0) {
-      // If timestamp is in seconds (Unix epoch < 10 billion), convert to milliseconds
-      if (num < 10000000000) return num * 1000;
-      return num;
     }
-    // Try parsing as ISO Date string
-    const parsedDate = Date.parse(val);
-    if (!isNaN(parsedDate) && parsedDate > 0) {
-      return parsedDate;
-    }
-    return null;
-  };
-
-  // If the raw trail point at the same index exists and has the same length, we can assume a direct 1-to-1 match
-  if (rawTrail && rawTrail[index] && rawTrail.length === total) {
-    const ts = parseTimestamp(rawTrail[index].timestamp);
-    if (ts !== null) return ts;
-  }
-  
-  // Otherwise, match based on physical distance to the closest raw coordinate
-  if (rawTrail && rawTrail.length > 0) {
-    let minDistance = Infinity;
-    let closestTimestamp: number | null = null;
-    
-    // Set first valid timestamp as standard baseline fallback
-    for (const pt of rawTrail) {
-      const ts = parseTimestamp(pt.timestamp);
-      if (ts !== null) {
-        closestTimestamp = ts;
-        break;
-      }
-    }
-    
-    for (const pt of rawTrail) {
-      const ts = parseTimestamp(pt.timestamp);
-      if (ts === null) continue;
-      
-      // Use squared distance for speed (no Math.sqrt needed)
-      const dist = Math.pow(pt.latitude - coord.latitude, 2) + Math.pow(pt.longitude - coord.longitude, 2);
-      if (dist < minDistance) {
-        minDistance = dist;
-        closestTimestamp = ts;
-      }
-    }
-    
-    if (closestTimestamp !== null) return closestTimestamp;
-  }
-  
-  // Fallback to relative index ratio if rawTrail is missing timestamps or empty
-  const limit = 24 * 60 * 60 * 1000;
-  const ratio = index / (total > 1 ? total - 1 : 1);
-  return Date.now() - (1 - ratio) * limit;
-};
-
-// --- Helper to get real battery percentage, charging state, and App active status ---
-const getRealBatteryAndActivity = async () => {
-  let batteryLevel = 100;
-  let isCharging = false;
-  try {
-    const level = await Battery.getBatteryLevelAsync();
-    batteryLevel = level >= 0 ? Math.round(level * 100) : 100;
-
-    const state = await Battery.getBatteryStateAsync();
-    isCharging = state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL;
-  } catch (err) {
-    console.warn('[Battery Fetch Error]:', err);
-  }
-
-  // Active means the app is currently in the foreground (hence phone is unlocked and user is active)
-  // Locked means the app is in background or inactive state (which happens when screen is locked or app is closed)
-  const appState = AppState.currentState;
-  const deviceStatus = appState === 'active' ? 'Active' : 'Phone locked';
-
-  return { batteryLevel, isCharging, deviceStatus };
-};
-
-// --- Local cache to avoid publishing when stationary (battery optimizer) ---
-let lastPublishedLat: number | null = null;
-let lastPublishedLng: number | null = null;
-let lastPublishedTime: number = 0;
-
-// --- Weather & Severe Weather Alert Fetcher (Open-Meteo) ---
-const getWeatherAndAlerts = async (latitude: number, longitude: number) => {
-  try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json && json.current) {
-      const temp = Math.round(json.current.temperature_2m);
-      const code = json.current.weather_code;
-
-      let emoji = '☀️';
-      let desc = 'Clear';
-      let isSevere = false;
-
-      if (code === 0) {
-        emoji = '☀️';
-        desc = 'Clear sky';
-      } else if ([1, 2, 3].includes(code)) {
-        emoji = '⛅';
-        desc = 'Partly cloudy';
-      } else if ([45, 48].includes(code)) {
-        emoji = '🌫️';
-        desc = 'Foggy';
-      } else if ([51, 53, 55].includes(code)) {
-        emoji = '🌧️';
-        desc = 'Drizzle';
-      } else if ([61, 63, 65].includes(code)) {
-        emoji = '🌧️';
-        desc = code === 65 ? 'Heavy rain' : 'Rain';
-        if (code === 65) isSevere = true;
-      } else if ([71, 73, 75].includes(code)) {
-        emoji = '❄️';
-        desc = code === 75 ? 'Heavy snow' : 'Snow';
-        if (code === 75) isSevere = true;
-      } else if ([80, 81, 82].includes(code)) {
-        emoji = '🌦️';
-        desc = code === 82 ? 'Torrential showers' : 'Showers';
-        if (code === 82) isSevere = true;
-      } else if ([95, 96, 99].includes(code)) {
-        emoji = '⛈️';
-        desc = 'Thunderstorms';
-        isSevere = true;
-      }
-
-      return { temp, emoji, desc, isSevere };
-    }
-  } catch (err) {
-    console.warn('[Weather Fetch Error]:', err);
-  }
-  return null;
-};
-
-// --- Weather caching global cache to optimize battery & mobile data ---
-let lastWeatherLat: number | null = null;
-let lastWeatherLng: number | null = null;
-let lastWeatherTime: number = 0;
-let lastWeatherValue: any = null;
-
-const getWeatherAndAlertsCached = async (latitude: number, longitude: number) => {
-  const now = Date.now();
-  // Reuse weather data if it was fetched within last 30 minutes and we have not moved more than 2 miles
-  if (
-    lastWeatherValue &&
-    now - lastWeatherTime < 30 * 60 * 1000 &&
-    lastWeatherLat !== null &&
-    lastWeatherLng !== null
-  ) {
-    const dist = getDistanceInMiles(latitude, longitude, lastWeatherLat, lastWeatherLng);
-    if (dist < 2.0) {
-      console.log(
-        '[Weather Optimizer]: Reusing cached weather (moved ' +
-          dist.toFixed(2) +
-          ' miles). Saved network query.'
-      );
-      await addDiagnosticLog(
-        `[Weather Cache] Cache hit: using ${lastWeatherValue.temp}°C, ${lastWeatherValue.desc} (moved ${dist.toFixed(2)} mi)`
-      );
-      return lastWeatherValue;
-    }
-  }
-
-  // Fetch fresh weather
-  const fresh = await getWeatherAndAlerts(latitude, longitude);
-  if (fresh) {
-    lastWeatherLat = latitude;
-    lastWeatherLng = longitude;
-    lastWeatherTime = now;
-    lastWeatherValue = fresh;
-    await addDiagnosticLog(`[Weather API] Cache miss: fetched ${fresh.temp}°C, ${fresh.desc}`);
-    return fresh;
-  }
-  return lastWeatherValue; // return last known weather if offline / query failed
-};
-
-interface TrailCoord {
-  latitude: number;
-  longitude: number;
-}
-
-// --- Perpendicular Distance Helper for RDP Simplification ---
-const getPerpendicularDistance = (pt: TrailCoord, lineStart: TrailCoord, lineEnd: TrailCoord) => {
-  const dx = lineEnd.longitude - lineStart.longitude;
-  const dy = lineEnd.latitude - lineStart.latitude;
-  
-  if (dx === 0 && dy === 0) {
-    return Math.sqrt(
-      Math.pow(pt.latitude - lineStart.latitude, 2) +
-      Math.pow(pt.longitude - lineStart.longitude, 2)
-    );
-  }
-  
-  const t = ((pt.longitude - lineStart.longitude) * dx + (pt.latitude - lineStart.latitude) * dy) / (dx * dx + dy * dy);
-  
-  let nearestX = lineStart.longitude + t * dx;
-  let nearestY = lineStart.latitude + t * dy;
-  
-  if (t < 0) {
-    nearestX = lineStart.longitude;
-    nearestY = lineStart.latitude;
-  } else if (t > 1) {
-    nearestX = lineEnd.longitude;
-    nearestY = lineEnd.latitude;
-  }
-  
-  return Math.sqrt(
-    Math.pow(pt.longitude - nearestX, 2) +
-    Math.pow(pt.latitude - nearestY, 2)
-  );
-};
-
-// --- Ramer-Douglas-Peucker (RDP) Simplification Algorithm ---
-const simplifyRDP = (points: TrailCoord[], epsilon: number): TrailCoord[] => {
-  if (points.length <= 2) return points;
-  
-  let dmax = 0;
-  let index = 0;
-  const end = points.length - 1;
-  
-  for (let i = 1; i < end; i++) {
-    const d = getPerpendicularDistance(points[i], points[0], points[end]);
-    if (d > dmax) {
-      index = i;
-      dmax = d;
-    }
-  }
-  
-  if (dmax > epsilon) {
-    const results1 = simplifyRDP(points.slice(0, index + 1), epsilon);
-    const results2 = simplifyRDP(points.slice(index), epsilon);
-    return results1.slice(0, results1.length - 1).concat(results2);
-  } else {
-    return [points[0], points[end]];
+  } catch (err: any) {
+    console.warn('[Adaptive Tracking Error]:', err);
+    await addDiagnosticLog(`[Adaptive Tracking Error] Failed: ${err.message}`);
   }
 };
 
-// --- Fetch Snapped Trail Coordinates from OSRM Map-Matching or Routing API ---
-const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoord[]> => {
-  if (points.length < 2) return points;
-  
-  // Simplify points first to keep the tracepoint count low, preventing URL length issues
-  // 0.00008 (~8 meters) tolerance filters out raw GPS jitter while preserving key turn points
-  const simplified = simplifyRDP(points, 0.00008);
-  
-  // OSRM expects coordinates in [longitude,latitude] format separated by semicolons
-  const coordsString = simplified.map(pt => `${pt.longitude},${pt.latitude}`).join(';');
-  
-  // 1. Try OSRM Routing API first: It ALWAYS guarantees a continuous, connected route
-  // that follows the street/path network, even if points are sparse or have large GPS gaps.
-  const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-  
-  try {
-    const response = await fetch(routeUrl);
-    const data = await response.json();
-    
-    if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
-      const routeGeometry = data.routes[0].geometry;
-      if (routeGeometry && routeGeometry.coordinates) {
-        // Map geojson [longitude, latitude] coordinates back to React Native Maps {latitude, longitude} format
-        return routeGeometry.coordinates.map((coord: [number, number]) => ({
-          latitude: coord[1],
-          longitude: coord[0]
-        }));
-      }
-    }
-    console.log('[OSRM Route Info]: Routing not possible or returned code:', data?.code, '- Trying map-matching fallback.');
-  } catch (err) {
-    console.warn('[OSRM Route Error]: Failed to fetch routed trail:', err);
-  }
-  
-  // 2. Fallback to OSRM Map-Matching API if routing fails (or is unavailable)
-  const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-  try {
-    const response = await fetch(matchUrl);
-    const data = await response.json();
-    
-    if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {
-      const matchGeometry = data.matchings[0].geometry;
-      if (matchGeometry && matchGeometry.coordinates) {
-        return matchGeometry.coordinates.map((coord: [number, number]) => ({
-          latitude: coord[1],
-          longitude: coord[0]
-        }));
-      }
-    }
-    console.warn('[OSRM Match Warning]: API returned code:', data?.code);
-  } catch (err) {
-    console.warn('[OSRM Match Error]: Failed to fetch snapped trail:', err);
-  }
-  
-  // 3. Graceful fallback to the simplified raw trail if both APIs are offline/fail
-  return simplified;
-};
-
-// --- Local cache of the user's historical coordinates for 24h trail ---
-const updateAndGetLocalTrail = async (latitude: number, longitude: number, timestamp?: number) => {
-  try {
-    const rawTrail = await AsyncStorage.getItem('user_trail');
-    let trail = rawTrail ? JSON.parse(rawTrail) : [];
-
-    const now = Date.now();
-    const recordTime = timestamp || now;
-
-    // Avoid spamming identical coordinates: log high-density (30s) while moving, and low-density (5m) when stationary
-    if (trail.length > 0) {
-      const lastPoint = trail[trail.length - 1];
-      const dist = getDistanceInMiles(latitude, longitude, lastPoint.latitude, lastPoint.longitude);
-      const timeElapsed = recordTime - lastPoint.timestamp;
-
-      const isMoving = dist >= 0.005; // ~8 meters movement
-      const shouldLog = (isMoving && timeElapsed >= 30 * 1000) || (timeElapsed >= 5 * 60 * 1000);
-
-      if (shouldLog) {
-        trail.push({ latitude, longitude, timestamp: recordTime });
-      }
-    } else {
-      trail.push({ latitude, longitude, timestamp: recordTime });
-    }
-
-    // Filter out points older than 24 hours
-    const limit = now - 24 * 60 * 60 * 1000;
-    trail = trail.filter((pt: any) => pt.timestamp > limit);
-
-    // Cap at 1000 points to fully cover a high-density 24h trail history on MantleDB payload
-    if (trail.length > 1000) {
-      trail = trail.slice(trail.length - 1000);
-    }
-
-
-    await AsyncStorage.setItem('user_trail', JSON.stringify(trail));
-    return trail;
-  } catch (err) {
-    console.warn('[Trail caching error]:', err);
-    return [];
-  }
-};
-
-// --- Helper to publish location directly to MantleDB ---
-const publishLocation = async (
-  name: string,
-  latitude: number,
-  longitude: number,
-  status: string = 'Active',
-  extraData: any = {},
-  timestamp?: number
-) => {
-  try {
-    const now = Date.now();
-    const isForced = ['App Started', 'Manual Refresh', 'Onboarding Completed'].includes(status);
-
-    // Throttling: Skip publishing if stationary (< 50 meters / ~0.03 miles) and updated within last 15 minutes
-    if (
-      !isForced &&
-      lastPublishedLat !== null &&
-      lastPublishedLng !== null &&
-      now - lastPublishedTime < 15 * 60 * 1000
-    ) {
-      const dist = getDistanceInMiles(latitude, longitude, lastPublishedLat, lastPublishedLng);
-      if (dist < 0.03) {
-        console.log(
-          '[Battery Optimizer]: Stationary (moved ' +
-            dist.toFixed(4) +
-            ' miles). Skipping MantleDB update to conserve power.'
-        );
-        await addDiagnosticLog(
-          `[Sync Idle] Stationary (moved ${dist.toFixed(4)} mi). Bypassed publish.`
-        );
-        return;
-      }
-    }
-
-    // Cache current publication
-    lastPublishedLat = latitude;
-    lastPublishedLng = longitude;
-    lastPublishedTime = now;
-
-    const info = await getRealBatteryAndActivity();
-
-    // Fetch live weather context if coordinates are available
-    let weatherInfo = null;
-    try {
-      weatherInfo = await getWeatherAndAlertsCached(latitude, longitude);
-    } catch (e) {
-      console.warn('[Weather integration bypassed]:', e);
-    }
-
-    // Get updated historical trail
-    let localTrail: any[] = [];
-    try {
-      localTrail = await updateAndGetLocalTrail(latitude, longitude, timestamp);
-    } catch (e) {
-      console.warn('[Local trail fetch bypassed]:', e);
-    }
-
-    const payload = {
-      [name]: {
-        name,
-        latitude,
-        longitude,
-        status,
-        battery: info.batteryLevel,
-        charging: info.isCharging,
-        deviceStatus: info.deviceStatus,
-        updatedAt: timestamp || Date.now(),
-        ...(weatherInfo
-          ? {
-              weatherTemp: weatherInfo.temp,
-              weatherEmoji: weatherInfo.emoji,
-              weatherDesc: weatherInfo.desc,
-              weatherIsSevere: weatherInfo.isSevere,
-            }
-          : {}),
-        ...(localTrail && localTrail.length > 0 ? { trail: localTrail } : {}),
-        ...extraData,
-      },
-    };
-
-    await fetch(MANTLE_DB_URL, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Mantle-Key': MANTLE_KEY,
-      },
-      body: JSON.stringify(payload),
-    });
-    console.log(
-      '[Background Sync]: Successfully published location for',
-      name,
-      'Battery:',
-      info.batteryLevel,
-      'Status:',
-      info.deviceStatus
-    );
-    await addDiagnosticLog(
-      `[Sync Success] Coords: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (${status}). Bat: ${info.batteryLevel}%`
-    );
-  } catch (err) {
-    console.error('[Background Sync Error]:', err);
-    await addDiagnosticLog(
-      `[Sync Error] Failed to publish location: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-};
-
-// --- Background Task Definition ---
+// --- Background Location Tracking Task Definition ---
 TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
   if (error) {
     console.error('[Background Task Error]:', error);
@@ -690,396 +135,135 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
   if (data) {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (locations && locations.length > 0) {
-      // Sort background coordinates chronologically to ensure perfect trail integration
       const sortedLocations = [...locations].sort((a, b) => a.timestamp - b.timestamp);
-      
       try {
-        const savedName = await AsyncStorage.getItem('user_name');
+        const savedName = globalStateRef.userName || (await AsyncStorage.getItem('user_name'));
         if (savedName) {
-          // Pre-cache all but the latest background coordinate into AsyncStorage trail
+          // Cache historical trail coordinates
           for (let i = 0; i < sortedLocations.length - 1; i++) {
             const loc = sortedLocations[i];
             if (loc && loc.coords) {
-              await updateAndGetLocalTrail(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
+              await updateAndGetLocalTrail(
+                loc.coords.latitude,
+                loc.coords.longitude,
+                loc.timestamp
+              );
             }
           }
 
-          // Publish the absolute latest coordinate to also push the accumulated trail to MantleDB
+          // Publish the latest background coordinate to MantleDB
           const latestLoc = sortedLocations[sortedLocations.length - 1];
           if (latestLoc && latestLoc.coords) {
+            const speed = latestLoc.coords.speed ?? 0;
+            // Adapt background tracking rate dynamically based on current speed
+            await updateBackgroundTrackingMode(speed);
+
             await publishLocation(
               savedName,
               latestLoc.coords.latitude,
               latestLoc.coords.longitude,
-              'Background Tracking',
+              speed > 8 ? 'Driving Mode' : 'Background Tracking',
               {},
               latestLoc.timestamp
             );
           }
-        } else {
-          await addDiagnosticLog(
-            `[Background Task Warning] Name not set in AsyncStorage, skipping publish.`
-          );
+
+          // Immediately check for family nudges
+          await checkAndHandleNudge(savedName);
         }
       } catch (err) {
-        console.error('[Background Sync task-level error]:', err);
-        await addDiagnosticLog(
-          `[Background Sync Error] task-level: ${err instanceof Error ? err.message : String(err)}`
-        );
+        console.error('[Background Location Task Error]:', err);
       }
     }
   }
 });
 
-// Mock Initial Family Data
-const INITIAL_FAMILY: any[] = [];
-
-function MainApp() {
-  const [isBackgroundTracking, setIsBackgroundTracking] = useState(false);
-  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
-  const [permissionStatus, setPermissionStatus] = useState<string>('Unknown');
-  const [familyMembers, setFamilyMembers] = useState(INITIAL_FAMILY);
-  const [panicActive, setPanicActive] = useState(false);
-  const [updatingLocation, setUpdatingLocation] = useState(false);
-  const [showTrails, setShowTrails] = useState(false);
+export default function App() {
   const [userName, setUserName] = useState<string | null>(null);
-  const [inputName, setInputName] = useState('');
-  const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [inputName, setInputName] = useState<string>('');
+  const [isLoadingUser, setIsLoadingUser] = useState<boolean>(true);
+  const [isBackgroundTracking, setIsBackgroundTracking] = useState<boolean>(false);
+  const [permissionStatus, setPermissionStatus] = useState<string>('Unknown');
+
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [snappedTrails, setSnappedTrails] = useState<Record<string, TrailCoord[]>>({});
+
+  const [showTrails, setShowTrails] = useState<boolean>(false);
+  const [panicActive, setPanicActive] = useState<boolean>(false);
+  const [updatingLocation, setUpdatingLocation] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
-  const [hasCenteredOnce, setHasCenteredOnce] = useState(false);
+  const [showTriageConsole, setShowTriageConsole] = useState<boolean>(false);
+  const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
 
-  // --- Triage Console States & Helpers ---
-  const [showTriageConsole, setShowTriageConsole] = useState(false);
-  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
-
-  const loadDiagnosticLogs = async () => {
-    try {
-      const raw = await AsyncStorage.getItem('diagnostic_logs');
-      const logs = raw ? JSON.parse(raw) : [];
-      setDiagnosticLogs(logs);
-    } catch (e) {
-      console.warn('Failed to load diagnostic logs:', e);
-    }
-  };
-
-  const clearDiagnosticLogs = async () => {
-    try {
-      await AsyncStorage.setItem('diagnostic_logs', JSON.stringify([]));
-      setDiagnosticLogs([]);
-      await addDiagnosticLog('[Console] Logs cleared by user.');
-    } catch (e) {
-      console.warn('Failed to clear diagnostic logs:', e);
-    }
-  };
-
-  const shareDiagnosticLogs = async () => {
-    try {
-      const raw = await AsyncStorage.getItem('diagnostic_logs');
-      const logs: string[] = raw ? JSON.parse(raw) : [];
-      if (logs.length === 0) {
-        Alert.alert('No Logs', 'There are no diagnostic logs to share yet.');
-        return;
-      }
-      const formattedLogs = logs.join('\n');
-      await Share.share({
-        title: "Where's my family!! Diagnostic Logs",
-        message: `Where's my family!! System Diagnostic Log Trail:\n\n${formattedLogs}`,
-      });
-      await addDiagnosticLog('[Console] Log trail shared.');
-    } catch (e: any) {
-      Alert.alert('Sharing Failed', e.message || String(e));
-    }
-  };
-
-  useEffect(() => {
-    if (showTriageConsole) {
-      loadDiagnosticLogs();
-    }
-  }, [showTriageConsole]);
-
-  // --- Mutable refs to prevent interval tear-downs & stale closures ---
-  const userNameRef = useRef<string | null>(userName);
-  const userLocationRef = useRef<Location.LocationObject | null>(userLocation);
   const mapRef = useRef<MapView | null>(null);
+  const userLocationRef = useRef<Location.LocationObject | null>(null);
 
+  // Update global ref whenever username state changes
   useEffect(() => {
-    userNameRef.current = userName;
+    globalStateRef.userName = userName;
   }, [userName]);
 
+  // Keep location ref current for asynchronous updates
   useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
 
-  // New Feature States
-  const [snappedTrails, setSnappedTrails] = useState<Record<string, TrailCoord[]>>({});
-  const lastTrailHashes = useRef<Record<string, string>>({});
-
-  // --- Map Matching for Family Trails ---
+  // Load registered profile from AsyncStorage on startup
   useEffect(() => {
-    let active = true;
-    
-    const processTrails = async () => {
-      const newSnappedTrails = { ...snappedTrails };
-      let changed = false;
-      
-      for (const member of familyMembers) {
-        const cleanTrail = cleanAndSortTrail(member.trail);
-
-        if (cleanTrail.length < 2) {
-          if (snappedTrails[member.id]) {
-            delete newSnappedTrails[member.id];
-            delete lastTrailHashes.current[member.id];
-            changed = true;
-          }
-          continue;
-        }
-        
-        // Create a unique hash/string of the raw trail coordinates
-        const hash = cleanTrail.map((pt: any) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
-        const prevHash = lastTrailHashes.current[member.id];
-        
-        if (hash !== prevHash) {
-          lastTrailHashes.current[member.id] = hash;
-          
-          // Fetch snapped coordinates from OSRM map matching API
-          const snapped = await fetchSnappedTrail(cleanTrail);
-          if (active) {
-            newSnappedTrails[member.id] = snapped;
-            changed = true;
-          }
-        }
-      }
-      
-      if (changed && active) {
-        setSnappedTrails(newSnappedTrails);
-      }
-    };
-    
-    if (showTrails && familyMembers.length > 0) {
-      processTrails();
-    }
-  }, [familyMembers, showTrails]);
-
-  // --- EAS Observe Performance Mark ---
-  useEffect(() => {
-    if (!isLoadingUser) {
+    const initializeProfile = async () => {
       try {
-        safeMarkInteractive();
-      } catch (err) {
-        console.warn('[EAS Observe Error]:', err);
-      }
-    }
-  }, [isLoadingUser]);
-
-  // --- Poll Family Locations ---
-  useEffect(() => {
-    if (!userName) return;
-
-    // Initial fetch
-    fetchFamilyLocations();
-
-    // Poll every 10 seconds stably without interval teardowns on GPS updates
-    const interval = setInterval(fetchFamilyLocations, 10000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userName]); // Only re-run if userName changes, keeping the timer stable
-
-  // --- Auto-center map on first coordinate load ---
-  useEffect(() => {
-    if (userLocation && !hasCenteredOnce && mapRef.current) {
-      setHasCenteredOnce(true);
-      mapRef.current.animateToRegion(
-        {
-          latitude: userLocation.coords.latitude,
-          longitude: userLocation.coords.longitude,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        },
-        1000
-      );
-    }
-  }, [userLocation, hasCenteredOnce]);
-
-  // --- Real-time Foreground Location Watcher ---
-  useEffect(() => {
-    let subscription: Location.LocationSubscription | null = null;
-
-    const startWatching = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          subscription = await Location.watchPositionAsync(
-            {
-              accuracy: Location.Accuracy.High,
-              timeInterval: 30000, // Update every 30 seconds
-              distanceInterval: 10, // Or every 10 meters
-            },
-            async (loc) => {
-              setUserLocation(loc);
-              const saved = userNameRef.current; // Fast 100% in-memory read (bypasses slow disk I/O)
-              await addDiagnosticLog(
-                `[Foreground Watcher] GPS updated: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`
-              );
-              if (saved) {
-                await publishLocation(
-                  saved,
-                  loc.coords.latitude,
-                  loc.coords.longitude,
-                  'Auto foreground update',
-                  {},
-                  loc.timestamp
-                );
-              }
-            }
-          );
-          console.log('[Foreground Watcher]: Started active real GPS watcher.');
-          await addDiagnosticLog('[Foreground Watcher] Active GPS watcher subscription started.');
+        const savedName = await AsyncStorage.getItem('user_name');
+        if (savedName) {
+          setUserName(savedName);
+          setInputName(savedName);
+          await addDiagnosticLog(`[Profile] Logged in as: "${savedName}"`);
+        } else {
+          await addDiagnosticLog('[Profile] No profile found. Loading onboarding overlay.');
         }
       } catch (err) {
-        console.warn('Error setting up foreground watcher:', err);
-        await addDiagnosticLog(
-          `[Foreground Watcher Error] Start failed: ${err instanceof Error ? err.message : String(err)}`
-        );
+        console.warn('Error loading user profile:', err);
+      } finally {
+        setIsLoadingUser(false);
       }
     };
-
-    if (userName) {
-      startWatching();
-    }
-
-    return () => {
-      if (subscription) {
-        subscription.remove();
-        console.log('[Foreground Watcher]: Stopped active watcher.');
-        addDiagnosticLog('[Foreground Watcher] Active GPS watcher subscription stopped.');
-      }
-    };
-  }, [userName]);
-
-  // --- Check Permissions and Task State on Mount ---
-  useEffect(() => {
-    loadUser();
-    checkTrackingState();
+    initializeProfile();
   }, []);
 
-  const loadUser = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('user_name');
-      if (saved) {
-        await addDiagnosticLog(`[App Mount] Loaded profile name: "${saved}"`);
-        setUserName(saved);
-      } else {
-        await addDiagnosticLog(`[App Mount] No profile name found. Redirecting to onboarding.`);
-      }
-    } catch (e) {
-      console.warn(e);
-      await addDiagnosticLog(
-        `[App Mount Error] Failed to load name: ${e instanceof Error ? e.message : String(e)}`
-      );
-    } finally {
-      setIsLoadingUser(false);
-    }
-  };
+  // Request Notification Permissions & setup channels on startup
+  useEffect(() => {
+    requestNotificationPermissions();
+  }, []);
 
-  // --- Center Map on User's Location ---
-  const centerOnUser = () => {
-    if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: userLocation.coords.latitude,
-          longitude: userLocation.coords.longitude,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        },
-        1000
-      );
-    }
-  };
-
-  // --- Send Nudge to Member ---
-  const handleNudgeMember = async (member: any) => {
+  // Fetch Family Locations from MantleDB
+  const fetchFamilyLocations = useCallback(async () => {
     try {
-      const payload = {
-        [member.name]: {
-          name: member.name,
-          latitude: member.latitude,
-          longitude: member.longitude,
-          status: member.status,
-          battery: member.battery,
-          charging: member.charging,
-          deviceStatus: member.deviceStatus,
-          updatedAt: member.updatedAt || Date.now(),
-          weatherTemp: member.weatherTemp,
-          weatherEmoji: member.weatherEmoji,
-          weatherDesc: member.weatherDesc,
-          weatherIsSevere: member.weatherIsSevere,
-          nudgeRequested: true,
-        },
-      };
-      await fetch(MANTLE_DB_URL, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Mantle-Key': MANTLE_KEY,
-        },
-        body: JSON.stringify(payload),
-      });
-      Alert.alert('Nudge Sent 📳', `Sent a silent vibration trigger to ${member.name}!`);
-    } catch (e) {
-      console.error(e);
-      Alert.alert('Error', 'Could not send nudge.');
-    }
-  };
-
-  // --- Fetch Other Family Locations from MantleDB ---
-  const fetchFamilyLocations = async () => {
-    try {
-      const res = await fetch(MANTLE_DB_URL, {
-        headers: {
-          'X-Mantle-Key': MANTLE_KEY,
-        },
-      });
-      const data = await res.json();
+      const data = await fetchMantleDB();
       if (data && !data.error) {
-        // Check for local nudges
+        // Direct local nudge foreground handling
         if (userName && data[userName] && data[userName].nudgeRequested === true) {
           Vibration.vibrate([0, 500, 200, 500]);
-          await addDiagnosticLog(`[Nudge] RECEIVED a nudge vibration request from family!`);
+          await addDiagnosticLog(`[Nudge] RECEIVED a nudge vibration request in foreground!`);
           Alert.alert('📳 Family Nudge!', 'Someone in your family is nudging you to check in!');
-
-          // Clear nudge state
-          const clearedUser = {
-            ...data[userName],
-            nudgeRequested: false,
-          };
-          fetch(MANTLE_DB_URL, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Mantle-Key': MANTLE_KEY,
-            },
-            body: JSON.stringify({
-              [userName]: clearedUser,
-            }),
-          }).catch((err) => console.warn('Error clearing nudge flag:', err));
+          await clearNudgeState(userName, data[userName]);
         }
 
-        const currentUserLoc = userLocationRef.current; // Read from Ref to prevent stale closures
+        const currentUserLoc = userLocationRef.current;
 
         const fetchedMembers = Object.keys(data)
           .filter((key) => !key.startsWith('_'))
           .map((key) => {
             const m = data[key];
 
-            let distanceStr = '0.1 mi';
+            let distanceStr = '0.1 km';
             if (currentUserLoc && m.latitude !== undefined && m.longitude !== undefined) {
-              const dist = getDistanceInMiles(
+              const dist = getDistanceInKm(
                 currentUserLoc.coords.latitude,
                 currentUserLoc.coords.longitude,
                 m.latitude,
                 m.longitude
               );
-              distanceStr = dist < 0.1 ? 'Just here' : `${dist.toFixed(1)} mi`;
+              distanceStr = dist < 0.15 ? 'Just here' : `${dist.toFixed(1)} km`;
             }
 
             let lastSeenStr = 'Just now';
@@ -1090,8 +274,6 @@ function MainApp() {
               }
             }
 
-            let displayStatus = m.status || 'Active';
-
             const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
             const colorIdx =
               Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) %
@@ -1100,7 +282,7 @@ function MainApp() {
             return {
               id: `fetched-${key}`,
               name: key,
-              status: displayStatus,
+              status: m.status || 'Active',
               distance: distanceStr,
               battery: m.battery || 100,
               charging: m.charging || false,
@@ -1117,230 +299,289 @@ function MainApp() {
               nudgeRequested: m.nudgeRequested || false,
               updatedAt: m.updatedAt,
               trail: m.trail || [],
+              platform: m.platform,
             };
           });
 
-        // Filter out mock members that match a real member's name (case-insensitive) or match the current user
-        const realNames = fetchedMembers.map((fm) => fm.name.toLowerCase());
-        const remainingMock = INITIAL_FAMILY.filter(
-          (m) =>
-            !realNames.includes(m.name.toLowerCase()) &&
-            m.name.toLowerCase() !== userName?.toLowerCase()
-        );
+        setFamilyMembers(fetchedMembers);
 
-        // Keep current user in family list
-        const filteredFetched = fetchedMembers;
-
-        setFamilyMembers([...filteredFetched, ...remainingMock]);
-
-        // Update the last updated time using the local device's clock
+        // Update last sync text using device clock
         const now = new Date();
-        const localTimeString = now.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
-        setLastUpdatedTime(localTimeString);
+        setLastUpdatedTime(
+          now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        );
       }
     } catch (e) {
       console.warn('Error fetching family locations:', e);
       await addDiagnosticLog(
-        `[Poll Error] Failed to sync family locations: ${e instanceof Error ? e.message : String(e)}`
+        `[Poll Error] Failed syncing locations: ${e instanceof Error ? e.message : String(e)}`
       );
     }
-  };
+  }, [userName]);
 
-  const handleSaveName = async () => {
-    if (!inputName.trim()) {
-      Alert.alert('Name Required', 'Please enter your name to identify yourself.');
-      return;
-    }
-    const trimmed = inputName.trim();
-    try {
-      await AsyncStorage.setItem('user_name', trimmed);
-      setUserName(trimmed);
-      if (userLocation) {
-        await publishLocation(
-          trimmed,
-          userLocation.coords.latitude,
-          userLocation.coords.longitude,
-          'Onboarding Completed',
-          {},
-          userLocation.timestamp
-        );
+  // Periodic Polling (every 4 seconds) for real-time foreground updates
+  useEffect(() => {
+    fetchFamilyLocations();
+    const interval = setInterval(fetchFamilyLocations, 4000);
+    return () => clearInterval(interval);
+  }, [fetchFamilyLocations]);
+
+  // Resolve OSRM route snapping on demand when showTrails is active
+  useEffect(() => {
+    if (!showTrails) return;
+
+    const snapTrailsForMembers = async () => {
+      const newSnappedTrails = { ...snappedTrails };
+      let changed = false;
+
+      for (const member of familyMembers) {
+        const cleanTrail = cleanAndSortTrail(member.trail);
+        if (cleanTrail.length >= 2) {
+          // If already snapped, avoid re-fetching
+          if (newSnappedTrails[member.id]) continue;
+
+          try {
+            await addDiagnosticLog(`[OSRM] Requesting snapped route caching for ${member.name}`);
+            const snapped = await fetchSnappedTrail(cleanTrail);
+            newSnappedTrails[member.id] = snapped;
+            changed = true;
+          } catch (err) {
+            console.warn(`[OSRM App Error]: Snap failed for ${member.name}:`, err);
+          }
+        }
       }
-    } catch {
-      Alert.alert('Error', 'Could not save your name.');
-    }
-  };
 
-  const checkTrackingState = async () => {
-    try {
-      const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
-      setIsBackgroundTracking(isRegistered);
-      await addDiagnosticLog(`[App Mount] Checked task registered state: ${isRegistered}`);
-
-      const foreground = await Location.getForegroundPermissionsAsync();
-      const background = await Location.getBackgroundPermissionsAsync();
-
-      let permDesc = 'Denied / Unasked';
-      if (foreground.granted && background.granted) {
-        permDesc = 'Granted (Background Active)';
-        setPermissionStatus('Granted (Background Active)');
-      } else if (foreground.granted) {
-        permDesc = 'Foreground Only';
-        setPermissionStatus('Foreground Only');
-      } else {
-        setPermissionStatus('Denied / Unasked');
+      if (changed) {
+        setSnappedTrails(newSnappedTrails);
       }
-      await addDiagnosticLog(`[App Mount] Location permissions: "${permDesc}"`);
+    };
 
-      // Fetch initial single location
-      if (foreground.granted) {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
+    snapTrailsForMembers();
+  }, [showTrails, familyMembers, snappedTrails]);
+
+  // Foreground GPS tracking setup with background permission requests
+  useEffect(() => {
+    let foregroundSub: { remove: () => void } | null = null;
+
+    const setupForegroundLocationTracking = async () => {
+      try {
+        const { status: foreStatus } = await Location.requestForegroundPermissionsAsync();
+        if (foreStatus !== 'granted') {
+          setPermissionStatus('Denied');
+          Alert.alert('Permission Denied', 'Foreground GPS permissions are required.');
+          return;
+        }
+
+        // Get initial position
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
         });
-        setUserLocation(loc);
-        const saved = await AsyncStorage.getItem('user_name');
-        if (saved) {
-          await publishLocation(
-            saved,
-            loc.coords.latitude,
-            loc.coords.longitude,
-            'App Started',
-            {},
-            loc.timestamp
-          );
-        }
+        setUserLocation(current);
+        await addDiagnosticLog(`[GPS Success] Acquired initial position.`);
+
+        // Subscribe to real-time foreground updates
+        foregroundSub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 4000, // 4s updates
+            distanceInterval: 1, // 1m sensitivity
+          },
+          async (loc) => {
+            setUserLocation(loc);
+            const speed = loc.coords.speed ?? 0;
+            // Adapt background tracking dynamically based on speed
+            await updateBackgroundTrackingMode(speed);
+
+            // Auto-publish in foreground
+            if (userName) {
+              await publishLocation(
+                userName,
+                loc.coords.latitude,
+                loc.coords.longitude,
+                speed > 8 ? 'Driving Mode' : 'Active Foreground'
+              );
+            }
+          }
+        );
+
+        setPermissionStatus('Granted (Active)');
+      } catch (err) {
+        console.warn('GPS initial watch setup error:', err);
       }
-    } catch (e) {
-      console.warn(e);
-      await addDiagnosticLog(
-        `[App Mount Error] checkTrackingState failed: ${e instanceof Error ? e.message : String(e)}`
-      );
+    };
+
+    setupForegroundLocationTracking();
+
+    return () => {
+      if (foregroundSub) {
+        foregroundSub.remove();
+      }
+    };
+  }, [userName]);
+
+  // Request & Verify Background Tasks Registration
+  const registerBackgroundFetchTask = async () => {
+    try {
+      await BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK_NAME, {
+        minimumInterval: 15 * 60,
+        stopOnTerminate: false,
+        startOnBoot: true,
+      });
+      await addDiagnosticLog(`[Background Fetch] Registered periodic nudge check (15m).`);
+    } catch (err: any) {
+      await addDiagnosticLog(`[Background Fetch Error] Registration failed: ${err.message}`);
     }
   };
 
-  // --- Toggle Background Location Tracking ---
-  const toggleBackgroundTracking = async (value: boolean) => {
+  const handleToggleBackgroundTracking = async (val: boolean) => {
     try {
-      if (value) {
-        await addDiagnosticLog(
-          `[Background Sync] Requesting foreground/background GPS permissions...`
-        );
-        // Request Permissions
-        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-        if (fgStatus !== 'granted') {
-          await addDiagnosticLog(`[Background Sync Error] Foreground permission denied.`);
+      if (val) {
+        // Request Background Permissions
+        const { status: backStatus } = await Location.requestBackgroundPermissionsAsync();
+        if (backStatus !== 'granted') {
           Alert.alert(
-            'Permission Denied',
-            'Foreground location permission is required to track location.'
+            'Background Tracking Blocked',
+            'To enable real-time safety tracking when your phone is in your pocket, please navigate to Settings -> App Permissions -> Location, and check "Always Allow".'
           );
           return;
         }
 
-        const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-        if (bgStatus !== 'granted') {
-          await addDiagnosticLog(`[Background Sync Error] Background permission denied.`);
-          Alert.alert(
-            'Background Permission Required',
-            'To track persistently even after app close and reboots, please set location permission to "Always Allow" in your system Settings.'
-          );
-          return;
+        // Ensure priority active delay transition
+        const appState = AppState.currentState;
+        if (appState !== 'active') {
+          await new Promise<void>((resolve) => {
+            const subscription = AppState.addEventListener('change', (nextState) => {
+              if (nextState === 'active') {
+                subscription.remove();
+                resolve();
+              }
+            });
+          });
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         }
 
-        // Start tracking task with high-efficiency battery profiles
+        // Register background tracking task
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 30000, // 30 seconds
-          distanceInterval: 15, // 15 meters
-          deferredUpdatesInterval: 30000, // batch updates every 30 seconds
-          deferredUpdatesDistance: 15, // batch updates every 15 meters
-          pausesUpdatesAutomatically: true, // hibernates on iOS when still
-          activityType: Location.ActivityType.AutomotiveNavigation, // iOS automotive profiles
+          timeInterval: 30000,
+          distanceInterval: 0,
+          deferredUpdatesInterval: 30000,
+          deferredUpdatesDistance: 0,
+          pausesUpdatesAutomatically: false,
+          activityType: Location.ActivityType.AutomotiveNavigation,
           foregroundService: {
             notificationTitle: "Where's my family!! Active",
             notificationBody: 'Sharing your live location with your family in the background.',
             notificationColor: '#e11d48',
+            killServiceOnDestroy: false,
           },
           showsBackgroundLocationIndicator: true,
         });
 
+        await registerBackgroundFetchTask();
         setIsBackgroundTracking(true);
         setPermissionStatus('Granted (Background Active)');
-        await addDiagnosticLog(
-          `[Background Sync] REGISTERED successfully. Interval: 30 sec, dist: 15m.`
-        );
+        await addDiagnosticLog('[Background Sync] REGISTERED successfully. Interval: 30 sec.');
         Alert.alert(
-          'Background Sharing Enabled',
-          'Your location is now being tracked and shared in the background. It will persist across app closed states and device reboots.'
+          'Background Tracking Enabled',
+          'Your location is now being securely shared in the background. It will persist even when the app is closed.'
         );
       } else {
-        // Stop tracking task
+        // Stop background updates
         const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
         if (isRegistered) {
           await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME);
         }
+
+        const isFetchRegistered = await TaskManager.isTaskRegisteredAsync(
+          BACKGROUND_FETCH_TASK_NAME
+        );
+        if (isFetchRegistered) {
+          await BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK_NAME);
+        }
+
         setIsBackgroundTracking(false);
-        setPermissionStatus('Foreground Only');
-        await addDiagnosticLog(`[Background Sync] UNREGISTERED background location task.`);
-        Alert.alert('Background Sharing Disabled', 'Persistent tracking stopped.');
+        setPermissionStatus('Granted (Active Only)');
+        await addDiagnosticLog('[Background Sync] UNREGISTERED by user.');
       }
-    } catch (error: any) {
-      await addDiagnosticLog(
-        `[Background Sync Error] Toggle failed: ${error.message || String(error)}`
-      );
-      Alert.alert('Error', error.message || 'An error occurred setting up background task.');
-      console.error(error);
+    } catch (err: any) {
+      console.warn('Background Toggle Error:', err);
+      await addDiagnosticLog(`[Background Sync Error] Toggle failed: ${err.message}`);
     }
   };
 
-  // --- Force Location Refresh ---
-  const refreshLocation = async () => {
+  // Perform Immediate Manual Position Fetch & Sync
+  const handleManualRefresh = async () => {
+    if (!userName) return;
     setUpdatingLocation(true);
-    await addDiagnosticLog(`[Manual Refresh] Requesting fresh high-accuracy GPS coordinates...`);
+    await addDiagnosticLog('[Sync Action] Manual refresh requested by user.');
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setUserLocation(loc);
-        await addDiagnosticLog(
-          `[Manual Refresh] Coords fetched: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`
-        );
-
-        if (userName) {
-          await publishLocation(
-            userName,
-            loc.coords.latitude,
-            loc.coords.longitude,
-            'Manual Refresh',
-            {},
-            loc.timestamp
-          );
-        }
-
-        // Pull down other family members immediately
-        await fetchFamilyLocations();
-      } else {
-        await addDiagnosticLog(`[Manual Refresh Error] Foreground permission denied.`);
-        Alert.alert('Permission Denied', 'Foreground location permission is needed.');
-      }
-    } catch (e: any) {
-      await addDiagnosticLog(`[Manual Refresh Error] Failed: ${e.message || String(e)}`);
-      Alert.alert('Refresh Failed', e.message || 'Could not fetch current coordinates.');
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setUserLocation(loc);
+      await publishLocation(
+        userName,
+        loc.coords.latitude,
+        loc.coords.longitude,
+        'Manual Refresh'
+      );
+      await fetchFamilyLocations();
+      Vibration.vibrate(100);
+      Alert.alert('Location Synchronized', 'Your position has been freshly pushed to your family!');
+    } catch (err: any) {
+      Alert.alert('GPS Sync Failure', err.message || String(err));
     } finally {
       setUpdatingLocation(false);
     }
   };
 
-  // --- Share App Invitation with Family ---
-  const shareAppInvite = async () => {
-    // EAS & TestFlight installation links for our family members:
-    // Frank can replace this with his actual TestFlight public link (e.g. https://testflight.apple.com/join/xxxxxx)
-    const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/YOUR_CODE'; 
-    const ANDROID_PREVIEW_LINK = 'https://expo.dev/accounts/fkctor/projects/wheres-my-family/builds';
+  // Trigger Immediate Nudge Vibration request for family member
+  const handleNudgeMember = async (member: FamilyMember) => {
+    try {
+      await requestNudgeMember(member);
+      Alert.alert(
+        '📳 Nudge Dispatched',
+        `Successfully sent a high-importance nudge request to ${member.name}'s device.`
+      );
+      await addDiagnosticLog(`[Nudge Outbound] Nudged member: "${member.name}"`);
+    } catch (err) {
+      Alert.alert('Nudge Failed', 'Failed to dispatch notification nudge.');
+    }
+  };
 
-    const inviteMessage = 
+  // Perform permanent deletion of device/member node
+  const handleDeleteMember = async (member: FamilyMember) => {
+    Alert.alert(
+      'Remove Family Device?',
+      `Are you sure you want to permanently delete and retire "${member.name}" from your active family tracking list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: '🗑️ Delete Node',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteMember(member.name);
+              await addDiagnosticLog(`[Admin] Deleted retired member: "${member.name}"`);
+              await fetchFamilyLocations();
+              Alert.alert('Device Removed', `Successfully retired "${member.name}".`);
+            } catch (err) {
+              Alert.alert('Error', 'Could not remove device.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Share App Invitation Instructions
+  const shareAppInvite = async () => {
+    const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/YOUR_CODE';
+    const ANDROID_PREVIEW_LINK =
+      'https://expo.dev/accounts/fkctor/projects/wheres-my-family/builds';
+
+    const inviteMessage =
       `Join our family tracking map on "Where's my family!!" 📍\n` +
       `Frank built this custom app just for our family to keep each other safe!\n\n` +
       `📱 FOR IPHONE (iOS) USERS:\n` +
@@ -1356,25 +597,32 @@ function MainApp() {
       `- IMPORTANT: Set Location permissions to "Always Allow" (Background Tracking) so we can keep each other safe even when the phone is locked in your pocket! 🔒`;
 
     try {
-      await Share.share({
-        message: inviteMessage,
-      });
-    } catch (error) {
-      console.warn('Sharing failed:', error);
+      await Share.share({ message: inviteMessage });
+    } catch (e: any) {
+      console.warn('Share app invite failure:', e);
     }
   };
 
-  // --- Toggle Panic Alarm ---
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const triggerPanic = () => {
-    const newState = !panicActive;
-    setPanicActive(newState);
-    if (newState) {
-      Alert.alert(
-        '🚨 EMERGENCY PANIC TRIGGERED',
-        'Your family has been alerted with your current coordinates! A loud sound simulation has started.',
-        [{ text: 'Dismiss Alarm', onPress: () => setPanicActive(false) }]
-      );
+  const handleSaveName = async () => {
+    if (!inputName.trim()) {
+      Alert.alert('Name Required', 'Please enter your name.');
+      return;
+    }
+    const trimmed = inputName.trim();
+    try {
+      await AsyncStorage.setItem('user_name', trimmed);
+      setUserName(trimmed);
+      if (userLocation) {
+        await publishLocation(
+          trimmed,
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          'Onboarding Completed'
+        );
+      }
+      await fetchFamilyLocations();
+    } catch (err) {
+      console.warn('Save name error:', err);
     }
   };
 
@@ -1387,36 +635,14 @@ function MainApp() {
     );
   }
 
+  // If name profile is missing, force premium enrollment onboarding
   if (!userName) {
     return (
-      <View style={[styles.window, { justifyContent: 'center', padding: 24 }]}>
-        <StatusBar style="light" />
-        <View style={styles.onboardingCard}>
-          <ShieldAlert
-            color="#f43f5e"
-            size={54}
-            style={{ alignSelf: 'center', marginBottom: 16 }}
-          />
-          <Text style={styles.onboardingTitle}>Where's my family!!</Text>
-          <Text style={styles.onboardingSubtitle}>
-            Identify who is using this phone to share and view locations with your family.
-          </Text>
-
-          <Text style={styles.inputLabel}>Who is this?</Text>
-          <TextInput
-            style={styles.onboardingInput}
-            value={inputName}
-            onChangeText={setInputName}
-            placeholder="e.g. Mum, Dad, Chloe, Jack"
-            placeholderTextColor="#64748b"
-            autoFocus
-          />
-
-          <TouchableOpacity style={styles.onboardingButton} onPress={handleSaveName}>
-            <Text style={styles.onboardingButtonText}>Save & Start Tracking</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <Onboarding
+        inputName={inputName}
+        setInputName={setInputName}
+        handleSaveName={handleSaveName}
+      />
     );
   }
 
@@ -1424,13 +650,23 @@ function MainApp() {
     <View style={[styles.window, panicActive && styles.panicWindow]}>
       <StatusBar style="light" />
 
-      {/* Header */}
+      {/* Premium Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
           <ShieldAlert color="#f43f5e" size={28} />
           <Text style={styles.headerTitle}>Where's my family!!</Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.shareIconHeader}
+            onPress={async () => {
+              await addDiagnosticLog('[UI] Feedback button pressed in header');
+              setFeedbackVisible(true);
+            }}
+            accessibilityLabel="Submit App Feedback"
+          >
+            <MessageSquare color="#38bdf8" size={20} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.shareIconHeader}
             onPress={shareAppInvite}
@@ -1442,450 +678,86 @@ function MainApp() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Map Simulator Visual Box */}
-        <View style={styles.mapCard}>
-          <View style={styles.mapHeaderRow}>
-            <Text style={styles.mapHeader}>Live Family Locator Map</Text>
-            <View style={styles.trailToggleRow}>
-              <Text style={styles.trailToggleLabel}>Show 24h Trails</Text>
-              <Switch
-                value={showTrails}
-                onValueChange={setShowTrails}
-                trackColor={{ false: '#0f172a', true: '#3b82f6' }}
-                thumbColor={showTrails ? '#60a5fa' : '#475569'}
-              />
-            </View>
+        {/* Live Map View Container */}
+        <MapViewContainer
+          userLocation={userLocation}
+          familyMembers={familyMembers}
+          showTrails={showTrails}
+          setShowTrails={setShowTrails}
+          snappedTrails={snappedTrails}
+          mapRef={mapRef}
+        />
+
+        {/* Sync Status Info Bar */}
+        <View style={styles.statusInfoRow}>
+          <View style={styles.statusPill}>
+            <View style={styles.pulseDot} />
+            <Text style={styles.statusText}>{permissionStatus}</Text>
           </View>
-
-          <View style={styles.mapCanvas}>
-            <MapView
-              ref={mapRef}
-              style={{ width: '100%', height: '100%' }}
-              initialRegion={{
-                latitude: userLocation?.coords.latitude || 43.6532,
-                longitude: userLocation?.coords.longitude || -79.3832,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-              }}
-            >
-              <Marker
-                coordinate={{
-                  latitude: userLocation?.coords.latitude || 43.6532,
-                  longitude: userLocation?.coords.longitude || -79.3832,
-                }}
-                title="You"
-                description="Your current location"
-                pinColor="#f43f5e"
-              />
-              {familyMembers.map((member) => {
-                const memberLat =
-                  member.latitude !== undefined
-                    ? member.latitude
-                    : (userLocation?.coords.latitude || 43.6532) + member.latOffset / 5000;
-                const memberLng =
-                  member.longitude !== undefined
-                    ? member.longitude
-                    : (userLocation?.coords.longitude || -79.3832) + member.lngOffset / 5000;
-                return (
-                  <Marker
-                    key={member.id}
-                    coordinate={{
-                      latitude: memberLat,
-                      longitude: memberLng,
-                    }}
-                    title={member.name}
-                    description={`${member.status} (${member.distance})`}
-                    pinColor={member.color}
-                  />
-                );
-              })}
-
-              {showTrails &&
-                familyMembers.map((member) => {
-                  const cleanTrail = cleanAndSortTrail(member.trail);
-                  if (cleanTrail.length < 2) {
-                    return null;
-                  }
-                  
-                  // Use snapped coordinates from OSRM if available, otherwise fall back to clean trail coords
-                  const coordinates = snappedTrails[member.id] || cleanTrail.map((pt: any) => ({
-                    latitude: pt.latitude,
-                    longitude: pt.longitude,
-                  }));
-
-                  if (coordinates.length < 2) {
-                    return null;
-                  }
-
-                  // Render individual segments with color-graded polylines
-                  const segments: React.ReactNode[] = [];
-                  for (let i = 0; i < coordinates.length - 1; i++) {
-                    const pt1 = coordinates[i];
-                    const pt2 = coordinates[i + 1];
-                    
-                    const ts1 = getCoordinateTimestamp(pt1, cleanTrail, i, coordinates.length);
-                    const ts2 = getCoordinateTimestamp(pt2, cleanTrail, i + 1, coordinates.length);
-                    const avgTimestamp = (ts1 + ts2) / 2;
-                    const ageMs = Math.max(0, Date.now() - avgTimestamp);
-                    
-                    const colors = interpolateTrailColor(ageMs);
-
-                    segments.push(
-                      <React.Fragment key={`trail-segment-${member.id}-${i}`}>
-                        {/* Subtle outer glow border for depth */}
-                        <Polyline
-                          coordinates={[pt1, pt2]}
-                          strokeColor={colors.glow}
-                          strokeWidth={8}
-                          lineJoin="round"
-                          lineCap="round"
-                        />
-                        {/* Inner smooth, solid sleek path */}
-                        <Polyline
-                          coordinates={[pt1, pt2]}
-                          strokeColor={colors.solid}
-                          strokeWidth={3}
-                          lineJoin="round"
-                          lineCap="round"
-                        />
-                      </React.Fragment>
-                    );
-                  }
-
-                  return (
-                    <React.Fragment key={`trail-group-${member.id}`}>
-                      {segments}
-                    </React.Fragment>
-                  );
-                })}
-            </MapView>
-
-            {/* Center On Me Floating Button Overlay */}
-            {userLocation && (
-              <TouchableOpacity
-                style={styles.centerButton}
-                onPress={centerOnUser}
-                activeOpacity={0.7}
-                accessibilityLabel="Center on my location"
-              >
-                <Navigation color="#fff" size={16} fill="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-          <Text style={styles.mapFooter}>Real-time Map centred on your device location</Text>
-        </View>
-
-        {/* Severe Weather Alert Banner */}
-        {familyMembers.some((m) => m.weatherIsSevere) && (
-          <View
-            style={{
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              borderWidth: 1,
-              borderColor: '#ef4444',
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 16,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <Text style={{ fontSize: 20 }}>⚠️</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#f87171', fontWeight: 'bold', fontSize: 14 }}>
-                Severe Weather Alert
-              </Text>
-              <Text style={{ color: '#fca5a5', fontSize: 12, marginTop: 2 }}>
-                {familyMembers
-                  .filter((m) => m.weatherIsSevere)
-                  .map((m) => m.name)
-                  .join(' & ')}{' '}
-                is currently experiencing hazardous conditions (
-                {familyMembers.find((m) => m.weatherIsSevere)?.weatherDesc || 'Thunderstorms'}).
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Family Cards List */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeader}>Family Members</Text>
-          {lastUpdatedTime ? (
-            <Text style={styles.lastUpdatedText}>Updated: {lastUpdatedTime}</Text>
-          ) : null}
-        </View>
-
-        {familyMembers.map((member) => (
-          <View key={member.id} style={styles.familyCard}>
-            <View style={styles.rowBetween}>
-              <View style={styles.familyMemberInfo}>
-                <View style={[styles.colorIndicator, { backgroundColor: member.color }]} />
-                <View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.familyName}>
-                      {member.name === userName ? `${member.name} (You)` : member.name}
-                    </Text>
-                    {member.weatherTemp !== undefined && (
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          backgroundColor: '#0f172a',
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 12,
-                          gap: 4,
-                        }}
-                      >
-                        <Text style={{ fontSize: 12 }}>{member.weatherEmoji}</Text>
-                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
-                          {member.weatherTemp}°
-                        </Text>
-                      </View>
-                    )}
-                    {member.weatherIsSevere && (
-                      <View
-                        style={{
-                          backgroundColor: '#ef4444',
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>
-                          ⚠️ SEVERE
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <View
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}
-                  >
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: member.deviceStatus === 'Active' ? '#10b981' : '#64748b',
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: member.deviceStatus === 'Active' ? '#34d399' : '#94a3b8',
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
-                    >
-                      {member.deviceStatus || 'Active'}
-                    </Text>
-                    <Text style={{ color: '#475569', fontSize: 11 }}>•</Text>
-                    <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={styles.familyRightSide}>
-                <Text style={styles.familyDistance}>{member.distance}</Text>
-                <Text style={styles.familyLastSeen}>Seen {member.lastSeen}</Text>
-              </View>
-            </View>
-
-            <View style={styles.familyDivider} />
-
-            <View style={styles.familyFooter}>
-              <View style={styles.batteryRow}>
-                <BatteryIcon
-                  color={member.battery < 20 ? '#ef4444' : member.charging ? '#10b981' : '#9ca3af'}
-                  size={16}
-                />
-                <Text style={[styles.batteryText, member.battery < 20 && styles.lowBatteryText]}>
-                  {member.battery}% {member.charging ? '(Charging)' : ''}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {member.name !== userName && (
-                  <TouchableOpacity
-                    style={[styles.pingButton, { backgroundColor: '#3b82f6' }]}
-                    onPress={() => handleNudgeMember(member)}
-                  >
-                    <Text style={styles.pingText}>📳 Nudge</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.pingButton}
-                  onPress={() =>
-                    Alert.alert(
-                      `Ping Sent`,
-                      `Requested immediate location update from ${member.name}.`
-                    )
-                  }
-                >
-                  <Text style={styles.pingText}>Ping Device</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        ))}
-
-        {/* Tracking Controls Status Card */}
-        <View style={[styles.card, { marginTop: 20 }]}>
-          <View style={styles.rowBetween}>
-            <View style={styles.iconDescRow}>
-              <Navigation color="#3b82f6" size={24} />
-              <View style={styles.textColumn}>
-                <Text style={styles.cardTitle}>Background Tracking</Text>
-                <Text style={styles.cardSubtitle}>Persists across boots & close</Text>
-              </View>
-            </View>
-            <Switch
-              value={isBackgroundTracking}
-              onValueChange={toggleBackgroundTracking}
-              trackColor={{ false: '#374151', true: '#10b981' }}
-              thumbColor={isBackgroundTracking ? '#34d399' : '#9ca3af'}
-            />
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.statusDetailRow}>
-            <Info color="#9ca3af" size={16} />
-            <Text style={styles.statusText}>
-              Status:{' '}
-              <Text
-                style={{ fontWeight: 'bold', color: isBackgroundTracking ? '#10b981' : '#f59e0b' }}
-              >
-                {permissionStatus}
-              </Text>
-            </Text>
-          </View>
-
-          {userLocation && (
-            <View style={styles.coordsBlock}>
-              <Text style={styles.coordsHeader}>My Coordinates ({userName})</Text>
-              <Text style={styles.coordsBody}>
-                Lat: {userLocation.coords.latitude.toFixed(6)} | Lng:{' '}
-                {userLocation.coords.longitude.toFixed(6)}
-              </Text>
-            </View>
-          )}
-
           <TouchableOpacity
-            style={[styles.refreshButton, updatingLocation && styles.disabledButton]}
-            onPress={refreshLocation}
+            style={styles.syncButton}
+            onPress={handleManualRefresh}
             disabled={updatingLocation}
           >
-            <RefreshCw color="#fff" size={16} style={updatingLocation ? styles.spin : null} />
-            <Text style={styles.refreshButtonText}>
-              {updatingLocation ? 'Locating...' : 'Force Update Live Location'}
+            <RefreshCw
+              color="#38bdf8"
+              size={13}
+              style={{ transform: [{ rotate: updatingLocation ? '45deg' : '0deg' }] }}
+            />
+            <Text style={styles.syncButtonText}>
+              {updatingLocation ? 'Syncing...' : 'Sync GPS Now'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Share Invite Card */}
-        <View style={[styles.inviteCard, { marginTop: 10 }]}>
-          <View style={styles.rowBetween}>
-            <View style={styles.iconDescRow}>
-              <Share2 color="#f43f5e" size={24} />
-              <View style={styles.textColumn}>
-                <Text style={styles.cardTitle}>Add Family Members</Text>
-                <Text style={styles.cardSubtitle}>Share setup instructions & link</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.inviteButton} onPress={shareAppInvite}>
-              <Text style={styles.inviteButtonText}>Invite</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Family Members Status List */}
+        <FamilyList
+          familyMembers={familyMembers}
+          userName={userName}
+          lastUpdatedTime={lastUpdatedTime}
+          handleNudgeMember={handleNudgeMember}
+          handleDeleteMember={handleDeleteMember}
+        />
 
-        {/* Triage Diagnostics Button */}
-        <TouchableOpacity
-          style={[styles.triageToggleButton, showTriageConsole && styles.triageActiveButton]}
-          onPress={() => setShowTriageConsole(!showTriageConsole)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.triageToggleText}>
-            {showTriageConsole ? '🛑 Close Diagnostics Panel' : '🔧 Open Diagnostics & Logs'}
-          </Text>
-        </TouchableOpacity>
+        {/* Global Real-time Diagnostics Terminal Overlay */}
+        <LogTerminal
+          showTriageConsole={showTriageConsole}
+          setShowTriageConsole={setShowTriageConsole}
+        />
 
-        {/* Triage Diagnostics Console Panel */}
-        {showTriageConsole && (
-          <View style={styles.triageCard}>
-            <View style={styles.triageHeader}>
-              <View style={styles.triageHeaderTitleCol}>
-                <View style={styles.triagePulseDot} />
-                <Text style={styles.triageHeaderTitle}>System Diagnostics Console</Text>
-              </View>
-              <Text style={styles.triageDeviceText}>Local Node Diagnostics</Text>
-            </View>
-
-            <ScrollView
-              style={styles.triageLogsContainer}
-              nestedScrollEnabled={true}
-              showsVerticalScrollIndicator={true}
-            >
-              {diagnosticLogs.length === 0 ? (
-                <Text style={styles.triageNoLogsText}>
-                  No logs found. Perform some actions to populate.
-                </Text>
-              ) : (
-                diagnosticLogs.map((log, idx) => (
-                  <Text key={`log-${idx}`} style={styles.triageLogLine}>
-                    {log}
-                  </Text>
-                ))
-              )}
-            </ScrollView>
-
-            <View style={styles.triageActionsRow}>
-              <TouchableOpacity style={styles.triageActionButton} onPress={loadDiagnosticLogs}>
-                <Text style={styles.triageActionText}>🔄 Refresh</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.triageActionButton, styles.triageClearButton]}
-                onPress={clearDiagnosticLogs}
-              >
-                <Text style={styles.triageActionText}>🧹 Clear Logs</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.triageActionButton, styles.triageShareButton]}
-                onPress={shareDiagnosticLogs}
-              >
-                <Text style={styles.triageActionText}>📋 Share Logs</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Version/Build Footer */}
-        <View style={styles.footerBlock}>
-          <Text style={styles.footerText}>Where's my family!! • v1.2.0</Text>
-          <Text style={styles.footerSubText}>Build 112 • Commit e81aa3b</Text>
-        </View>
-
-        <View style={{ height: 40 }} />
+        {/* Version Footer */}
+        <Text style={styles.footerText}>
+          Where's my family!! • v1.0.10{"\n"}
+          E2EE Data Residency: Canada, Switzerland, or Iceland
+        </Text>
       </ScrollView>
+
+      {/* Slide-Up Feedback Drawer Modal */}
+      <FeedbackModal
+        visible={feedbackVisible}
+        onClose={() => setFeedbackVisible(false)}
+      />
     </View>
   );
 }
 
-// Styling
 const styles = StyleSheet.create({
   window: {
     flex: 1,
     backgroundColor: '#0f172a', // Slate 900
-    paddingTop: Platform.OS === 'android' ? 40 : 50,
+    paddingTop: Platform.OS === 'ios' ? 50 : 25,
   },
   panicWindow: {
-    backgroundColor: '#310d0d', // Deep red
+    backgroundColor: '#450a0a', // Dark red
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 15,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: '#1e293b', // Slate 800
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -1894,594 +766,74 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  alertCount: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-    position: 'relative',
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 14,
   },
   shareIconHeader: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-  },
-  inviteCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  inviteButton: {
-    backgroundColor: '#f43f5e',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    padding: 6,
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  inviteButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+    backgroundColor: '#1e293b',
   },
   scrollContent: {
-    padding: 20,
-  },
-  card: {
-    backgroundColor: '#1e293b', // Slate 800
-    borderRadius: 16,
     padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
+    paddingBottom: 40,
   },
-  rowBetween: {
+  statusInfoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 4,
+    paddingHorizontal: 4,
   },
-  iconDescRow: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)', // Ocean blue semi-transparent glow
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
   },
-  textColumn: {
-    justifyContent: 'center',
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  cardSubtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#334155',
-    marginVertical: 14,
-  },
-  statusDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38bdf8', // Blue neon
+    marginRight: 8,
   },
   statusText: {
-    color: '#94a3b8',
-    fontSize: 13,
-  },
-  coordsBlock: {
-    backgroundColor: '#0f172a',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 12,
-  },
-  coordsHeader: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: 'bold',
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
-  coordsBody: {
-    color: '#38bdf8',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  refreshButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-  disabledButton: {
-    backgroundColor: '#1d4ed8',
-    opacity: 0.6,
-  },
-  refreshButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  spin: {
-    // Optional animation tag helper
-  },
-  mapCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  mapHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 12,
-  },
-  trailToggleRow: {
+  syncButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  trailToggleLabel: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  mapHeader: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    alignSelf: 'flex-start',
-    marginBottom: 0,
-  },
-  mapCanvas: {
-    width: '100%',
-    height: 240,
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    position: 'relative',
+    backgroundColor: '#1e293b',
     borderWidth: 1,
     borderColor: '#334155',
-  },
-  mapRing: {
-    position: 'absolute',
-    borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.4)',
-  },
-  userDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#f43f5e',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  userDotPulse: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(244, 63, 94, 0.2)',
-  },
-  userDotLabel: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    position: 'absolute',
-    marginTop: 36,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  familyDot: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dotNameContainer: {
-    position: 'absolute',
-    top: 24,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  dotName: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  mapFooter: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 10,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    marginTop: 10,
-  },
-  sectionHeader: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 0,
-    marginTop: 0,
-  },
-  lastUpdatedText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  familyCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  familyMemberInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  colorIndicator: {
-    width: 6,
-    height: 36,
-    borderRadius: 3,
-  },
-  familyName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  familyStatus: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  familyRightSide: {
-    alignItems: 'flex-end',
-  },
-  familyDistance: {
+  syncButtonText: {
     color: '#38bdf8',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  familyLastSeen: {
-    color: '#64748b',
     fontSize: 11,
-    marginTop: 2,
-  },
-  familyDivider: {
-    height: 1,
-    backgroundColor: '#293548',
-    marginVertical: 10,
-  },
-  familyFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  batteryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  batteryText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  lowBatteryText: {
-    color: '#f87171',
-    fontWeight: 'bold',
-  },
-  centerButton: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: 'rgba(30, 41, 59, 0.9)', // Slate 800 semi-transparent
-    borderRadius: 18,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#475569', // Slate 600
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  pingButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 4,
-    backgroundColor: '#293548',
-  },
-  pingText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  panicButton: {
-    backgroundColor: '#e11d48', // Rose 600
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
-    shadowColor: '#f43f5e',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  panicButtonActive: {
-    backgroundColor: '#4c0519', // Dark burgundy rose
-    borderColor: '#e11d48',
-    borderWidth: 1,
-  },
-  panicButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  onboardingCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  onboardingTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  onboardingSubtitle: {
-    color: '#94a3b8',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  inputLabel: {
-    color: '#38bdf8',
-    fontSize: 12,
     fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  onboardingInput: {
-    backgroundColor: '#0f172a',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#334155',
-    color: '#fff',
-    fontSize: 16,
-    padding: 12,
-    marginBottom: 20,
-  },
-  onboardingButton: {
-    backgroundColor: '#f43f5e',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  onboardingButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  footerBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    marginBottom: 10,
-    paddingVertical: 10,
   },
   footerText: {
-    color: '#475569', // Slate 600
+    color: '#334155',
     fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  footerSubText: {
-    color: '#334155', // Slate 700
-    fontSize: 9,
-    fontWeight: '500',
-    marginTop: 4,
-    letterSpacing: 0.3,
-  },
-  triageToggleButton: {
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#475569',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 15,
-  },
-  triageActiveButton: {
-    borderColor: '#10b981',
-    backgroundColor: '#0f172a',
-  },
-  triageToggleText: {
-    color: '#94a3b8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  triageCard: {
-    backgroundColor: '#020617', // Dark slate/almost black
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    padding: 14,
-    marginTop: 10,
-  },
-  triageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-    paddingBottom: 8,
-    marginBottom: 8,
-  },
-  triageHeaderTitleCol: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  triagePulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10b981',
-  },
-  triageHeaderTitle: {
-    color: '#10b981', // Neon green
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  triageDeviceText: {
-    color: '#475569',
-    fontSize: 10,
-  },
-  triageLogsContainer: {
-    maxHeight: 180,
-    minHeight: 100,
-    backgroundColor: '#090d16',
-    borderRadius: 6,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  triageNoLogsText: {
-    color: '#475569',
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     textAlign: 'center',
-    marginTop: 20,
-  },
-  triageLogLine: {
-    color: '#34d399', // bright light green
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    lineHeight: 16,
-    marginBottom: 4,
-  },
-  triageActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 10,
-  },
-  triageActionButton: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    borderRadius: 6,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  triageClearButton: {
-    borderColor: '#ef4444',
-  },
-  triageShareButton: {
-    borderColor: '#3b82f6',
-  },
-  triageActionText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
+    marginTop: 30,
+    fontWeight: '600',
   },
 });
-
-// Safe helper to mark interactive dynamically to prevent startup crash in Expo Go
-function safeMarkInteractive() {
-  console.log('[EAS Observe]: Performance monitoring disabled on SDK 54.');
-}
-
-// Safe wrapper for EAS Observe Root (bypasses native crashes in Expo Go)
-function SafeObserveRoot({ children }: { children: React.ReactNode }) {
-  return <View style={{ flex: 1, backgroundColor: '#0f172a' }}>{children}</View>;
-}
-
-export default function App() {
-  return (
-    <SafeObserveRoot>
-      <MainApp />
-    </SafeObserveRoot>
-  );
-}
