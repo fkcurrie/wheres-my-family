@@ -100,6 +100,7 @@ jobs:
 
       - name: Verify or Download iOS SDK Platforms
         run: |
+          xcrun simctl list > /dev/null
           xcodebuild -downloadPlatform iOS || true
 
       - name: Build & Package iOS App
