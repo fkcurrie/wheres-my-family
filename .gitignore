@@ -56,7 +56,9 @@ web-dashboard/.vercel/
 # Credentials and Keys
 pc-api-key.json
 android_keystore_base64.txt
+ios_provisioning_profile_base64.txt
 scratch/
 *.xml
+
 
 
