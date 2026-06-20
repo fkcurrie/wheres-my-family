@@ -59,3 +59,11 @@ jobs:
           name: wheres-my-family-android-release
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
+      - name: Upload to Google Play Console
+        uses: r0adk5l/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.ANDROID_PLAY_STORE_JSON }}
+          packageName: ca.sfle.wheresmyfamily
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
