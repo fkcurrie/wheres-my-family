@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  TextInput,
-} from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ShieldAlert } from 'lucide-react-native';
 
@@ -15,20 +9,12 @@ interface OnboardingProps {
   handleSaveName: () => void;
 }
 
-export default function Onboarding({
-  inputName,
-  setInputName,
-  handleSaveName,
-}: OnboardingProps) {
+export default function Onboarding({ inputName, setInputName, handleSaveName }: OnboardingProps) {
   return (
     <View style={[styles.window, { justifyContent: 'center', padding: 24 }]}>
       <StatusBar style="light" />
       <View style={styles.onboardingCard}>
-        <ShieldAlert
-          color="#f43f5e"
-          size={54}
-          style={{ alignSelf: 'center', marginBottom: 16 }}
-        />
+        <ShieldAlert color="#f43f5e" size={54} style={{ alignSelf: 'center', marginBottom: 16 }} />
         <Text style={styles.onboardingTitle}>Where's my family!!</Text>
         <Text style={styles.onboardingSubtitle}>
           Identify who is using this phone to share and view locations with your family.

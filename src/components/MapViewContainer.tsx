@@ -1,11 +1,5 @@
 import React, { useCallback } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  Switch,
-} from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Switch } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { Navigation } from 'lucide-react-native';
 import { FamilyMember, TrailCoord } from '../types';
@@ -45,7 +39,7 @@ const precomputeTrailTimestamps = (
   rawTrail: any[] | undefined
 ): number[] => {
   if (coordinates.length === 0) return [];
-  
+
   const parseTimestamp = (val: any): number | null => {
     if (!val) return null;
     const num = Number(val);
@@ -123,12 +117,7 @@ const MemoizedMarker = React.memo(
     pinColor: string;
   }) => {
     return (
-      <Marker
-        coordinate={coordinate}
-        title={title}
-        description={description}
-        pinColor={pinColor}
-      />
+      <Marker coordinate={coordinate} title={title} description={description} pinColor={pinColor} />
     );
   },
   (prev, next) => {
@@ -282,9 +271,7 @@ export default function MapViewContainer({
                 );
               }
 
-              return (
-                <React.Fragment key={`trail-group-${member.id}`}>{segments}</React.Fragment>
-              );
+              return <React.Fragment key={`trail-group-${member.id}`}>{segments}</React.Fragment>;
             })}
         </MapView>
 

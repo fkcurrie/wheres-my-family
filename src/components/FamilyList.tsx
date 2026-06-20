@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  Alert,
-  Platform,
-} from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Battery as BatteryIcon } from 'lucide-react-native';
 import { FamilyMember } from '../types';
@@ -160,10 +153,7 @@ const FamilyMemberCard = React.memo(
             <TouchableOpacity
               style={styles.pingButton}
               onPress={() =>
-                Alert.alert(
-                  `Ping Sent`,
-                  `Requested immediate location update from ${member.name}.`
-                )
+                Alert.alert(`Ping Sent`, `Requested immediate location update from ${member.name}.`)
               }
             >
               <Text style={styles.pingText}>Ping Device</Text>

@@ -7,7 +7,10 @@ let lastWeatherLng: number | null = null;
 let lastWeatherTime: number = 0;
 let lastWeatherValue: WeatherInfo | null = null;
 
-export const getWeatherAndAlerts = async (latitude: number, longitude: number): Promise<WeatherInfo | null> => {
+export const getWeatherAndAlerts = async (
+  latitude: number,
+  longitude: number
+): Promise<WeatherInfo | null> => {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&temperature_unit=celsius&wind_speed_unit=ms&precipitation_unit=mm`;
     const res = await fetch(url);
@@ -58,7 +61,10 @@ export const getWeatherAndAlerts = async (latitude: number, longitude: number): 
   return null;
 };
 
-export const getWeatherAndAlertsCached = async (latitude: number, longitude: number): Promise<WeatherInfo | null> => {
+export const getWeatherAndAlertsCached = async (
+  latitude: number,
+  longitude: number
+): Promise<WeatherInfo | null> => {
   const now = Date.now();
   // Reuse weather data if it was fetched within last 30 minutes and we have not moved more than 3.2 km (2 miles)
   if (

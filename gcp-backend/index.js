@@ -27,7 +27,7 @@ functions.http('locations', async (req, res) => {
     if (req.method === 'GET') {
       const snapshot = await collectionRef.get();
       const responseData = {};
-      snapshot.forEach(doc => {
+      snapshot.forEach((doc) => {
         responseData[doc.id] = doc.data();
       });
       return res.status(200).json(responseData);
@@ -54,7 +54,7 @@ functions.http('locations', async (req, res) => {
       // Return refreshed full database state
       const snapshot = await collectionRef.get();
       const responseData = {};
-      snapshot.forEach(doc => {
+      snapshot.forEach((doc) => {
         responseData[doc.id] = doc.data();
       });
       return res.status(200).json(responseData);

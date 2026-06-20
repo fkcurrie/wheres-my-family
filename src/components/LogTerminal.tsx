@@ -16,10 +16,7 @@ interface LogTerminalProps {
   setShowTriageConsole: (show: boolean) => void;
 }
 
-export default function LogTerminal({
-  showTriageConsole,
-  setShowTriageConsole,
-}: LogTerminalProps) {
+export default function LogTerminal({ showTriageConsole, setShowTriageConsole }: LogTerminalProps) {
   const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
 
   const loadDiagnosticLogsLocal = async () => {

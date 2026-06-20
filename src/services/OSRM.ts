@@ -201,7 +201,11 @@ export const cleanAndSortTrail = (rawTrail: any[] | undefined): any[] => {
 /**
  * Perpendicular Distance Helper for RDP Simplification
  */
-export const getPerpendicularDistance = (pt: TrailCoord, lineStart: TrailCoord, lineEnd: TrailCoord) => {
+export const getPerpendicularDistance = (
+  pt: TrailCoord,
+  lineStart: TrailCoord,
+  lineEnd: TrailCoord
+) => {
   const dx = lineEnd.longitude - lineStart.longitude;
   const dy = lineEnd.latitude - lineStart.latitude;
 
@@ -268,7 +272,9 @@ export const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoor
   const simplified = simplifyRDP(points, 0.00008);
 
   // Generate a unique coordinate route hash for caching
-  const hash = simplified.map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+  const hash = simplified
+    .map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`)
+    .join('|');
 
   // Check persistent caching layers
   await ensureRouteCacheLoaded();
@@ -336,7 +342,11 @@ export const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoor
 /**
  * Local cache of the user's historical coordinates for 24h trail
  */
-export const updateAndGetLocalTrail = async (latitude: number, longitude: number, timestamp?: number) => {
+export const updateAndGetLocalTrail = async (
+  latitude: number,
+  longitude: number,
+  timestamp?: number
+) => {
   try {
     const rawTrail = await AsyncStorage.getItem('user_trail');
     let trail = rawTrail ? JSON.parse(rawTrail) : [];

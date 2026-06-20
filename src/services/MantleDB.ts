@@ -6,7 +6,8 @@ import { getWeatherAndAlertsCached } from './Weather';
 import { updateAndGetLocalTrail } from './OSRM';
 import { encryptValue, decryptValue } from './Crypto';
 
-export const MANTLE_DB_URL = 'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
+export const MANTLE_DB_URL =
+  'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
 export const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
 
 // Local cache to avoid publishing when stationary (battery optimizer throttling)

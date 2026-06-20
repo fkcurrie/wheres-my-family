@@ -704,7 +704,7 @@
           <h1 class="brand-title">Where's My Family!!</h1>
         </div>
       </div>
-      <div class="header-right" style="display: flex; align-items: center; gap: 16px;">
+      <div class="header-right" style="display: flex; align-items: center; gap: 16px">
         <button id="feedback-trigger" class="feedback-trigger-btn" onclick="openFeedbackModal()">
           💬 Submit Feedback
         </button>
@@ -734,11 +734,23 @@
           </div>
           <div class="feedback-form-group">
             <label class="feedback-label">Issue Title</label>
-            <input id="feedback-title" type="text" placeholder="e.g. Memory leak on Map trails" class="feedback-input" required />
+            <input
+              id="feedback-title"
+              type="text"
+              placeholder="e.g. Memory leak on Map trails"
+              class="feedback-input"
+              required
+            />
           </div>
           <div class="feedback-form-group">
             <label class="feedback-label">Feedback Details / Body</label>
-            <textarea id="feedback-desc" rows="5" placeholder="Please describe your optimization idea, bug, or feedback..." class="feedback-textarea" required></textarea>
+            <textarea
+              id="feedback-desc"
+              rows="5"
+              placeholder="Please describe your optimization idea, bug, or feedback..."
+              class="feedback-textarea"
+              required
+            ></textarea>
           </div>
           <button id="feedback-submit" type="submit" class="feedback-submit-btn">
             🚀 Submit Issue to GitHub
@@ -845,7 +857,6 @@
           return null;
         }
       }
-
 
       let map;
       let markers = {};
@@ -1385,7 +1396,9 @@
         const simplified = simplifyRDP(points, 0.00008);
 
         // Generate a unique coordinate route hash for caching
-        const hash = simplified.map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`).join('|');
+        const hash = simplified
+          .map((pt) => `${pt.latitude.toFixed(6)},${pt.longitude.toFixed(6)}`)
+          .join('|');
 
         // Check persistent caching layer
         const cache = getRouteCache();
@@ -1794,25 +1807,31 @@
           const res = await fetch('http://localhost:3500/api/feedback', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               title: `[Feedback] ${titleInput}`,
               body: `${descInput}\n\n---\n*Submitted via Whales Locator Web Dashboard*`,
-              label: category
-            })
+              label: category,
+            }),
           });
 
           const data = await res.json();
           if (data && data.success) {
-            showFeedbackBanner(`Success! Created issue: <a href="${data.url}" target="_blank" style="color: inherit; font-weight: bold; text-decoration: underline;">Link to GitHub Issue</a>`, true);
+            showFeedbackBanner(
+              `Success! Created issue: <a href="${data.url}" target="_blank" style="color: inherit; font-weight: bold; text-decoration: underline;">Link to GitHub Issue</a>`,
+              true
+            );
             document.getElementById('feedback-title').value = '';
             document.getElementById('feedback-desc').value = '';
           } else {
             showFeedbackBanner(data.error || 'Failed to connect to local issue service.', false);
           }
         } catch (e) {
-          showFeedbackBanner('Local feedback server is offline. Run "npm run feedback-server" on your machine to submit issues natively!', false);
+          showFeedbackBanner(
+            'Local feedback server is offline. Run "npm run feedback-server" on your machine to submit issues natively!',
+            false
+          );
         } finally {
           submitBtn.disabled = false;
           submitBtn.innerHTML = '🚀 Submit Issue to GitHub';

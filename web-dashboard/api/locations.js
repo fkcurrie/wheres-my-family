@@ -64,8 +64,8 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const data = await getSovereignData();
       return res.status(200).json(data);
-    } 
-    
+    }
+
     if (req.method === 'PATCH' || req.method === 'POST') {
       const updatePayload = req.body;
       if (!updatePayload || typeof updatePayload !== 'object') {

@@ -27,6 +27,11 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Pre-Check TypeScript and Lint
+        run: |
+          npm run typecheck
+          npm run lint
+
       - name: Setup Expo
         uses: expo/expo-github-action@v8
         with:
@@ -34,6 +39,22 @@ jobs:
 
       - name: Prebuild Native iOS
         run: npx expo prebuild --platform ios --no-install
+
+      - name: Disable Automatic Signing
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pbxproj = "ios/wheresmyfamily.xcodeproj/project.pbxproj";
+            if (fs.existsSync(pbxproj)) {
+              let content = fs.readFileSync(pbxproj, "utf8");
+              content = content.replace(/ProvisioningStyle = Automatic;/g, "ProvisioningStyle = Manual;");
+              fs.writeFileSync(pbxproj, content, "utf8");
+              console.log("Successfully set ProvisioningStyle to Manual in pbxproj.");
+            } else {
+              console.error("pbxproj file not found!");
+              process.exit(1);
+            }
+          '
 
       - name: Install CocoaPods
         run: |
@@ -53,15 +74,44 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
 
+      - name: Generate ExportOptions.plist
+        run: |
+          PROV_PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | xmllint --xpath "string(//key[text()='UUID']/following-sibling::string[1])" -)
+          cat <<EOF > ios/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>LSV2MNUNZ8</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>ca.sfle.wheresmyfamily</key>
+                  <string>$PROV_PROFILE_UUID</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          echo "Generated ExportOptions.plist with UUID: $PROV_PROFILE_UUID"
 
       - name: Build & Package iOS App
         run: |
+          PROV_PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | xmllint --xpath "string(//key[text()='UUID']/following-sibling::string[1])" -)
+          
           cd ios
           xcodebuild -workspace wheresmyfamily.xcworkspace \
                      -scheme wheresmyfamily \
                      -sdk iphoneos \
                      -configuration Release \
                      -archivePath $PWD/build/wheresmyfamily.xcarchive \
+                     DEVELOPMENT_TEAM="LSV2MNUNZ8" \
+                     CODE_SIGN_STYLE="Manual" \
+                     PROVISIONING_PROFILE_SPECIFIER="$PROV_PROFILE_UUID" \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
                      archive
           
           xcodebuild -exportArchive \
@@ -78,7 +128,7 @@ jobs:
           # Write ASC Private Key to local file
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$ASC_KEY_CONTENT" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
-          
+
           # Upload via Apple Transporter tool
           xcrun altool --upload-app \
                        -f ios/build/out/wheresmyfamily.ipa \

@@ -32,7 +32,9 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
   const [title, setTitle] = useState<string>('');
   const [details, setDetails] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<{ text: string; isSuccess: boolean } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; isSuccess: boolean } | null>(
+    null
+  );
 
   const handleSubmit = async () => {
     if (!title.trim() || !details.trim()) {
@@ -44,7 +46,9 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
     setStatusMessage(null);
 
     const githubApiUrl = 'https://api.github.com/repos/fkcurrie/wheres-my-family/issues';
-    await addDiagnosticLog(`[Feedback] Dispatching ${category} issue: "${title}" directly to GitHub API`);
+    await addDiagnosticLog(
+      `[Feedback] Dispatching ${category} issue: "${title}" directly to GitHub API`
+    );
 
     // Category mapping to GitHub labels
     let label = 'bug';
@@ -61,8 +65,8 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'token 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',
-          'Accept': 'application/vnd.github.v3+json',
+          Authorization: 'token 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',
+          Accept: 'application/vnd.github.v3+json',
           'User-Agent': 'WheresMyFamilyApp',
         },
         body: JSON.stringify({
@@ -90,10 +94,11 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
         setStatusMessage({ text: errMsg, isSuccess: false });
       }
     } catch (err: any) {
-      const errMsg = err.name === 'AbortError' 
-        ? 'Connection to GitHub timed out. Please check your network connection.' 
-        : 'Could not connect to GitHub. Please ensure your device is connected to the internet.';
-      
+      const errMsg =
+        err.name === 'AbortError'
+          ? 'Connection to GitHub timed out. Please check your network connection.'
+          : 'Could not connect to GitHub. Please ensure your device is connected to the internet.';
+
       await addDiagnosticLog(`[Feedback Error] Connection failed: ${err.message || String(err)}`);
       setStatusMessage({ text: errMsg, isSuccess: false });
     } finally {
@@ -102,12 +107,7 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.modalBackdrop}
@@ -123,7 +123,10 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.sectionLabel}>Select Category</Text>
             <View style={styles.categoryRow}>
               {CATEGORIES.map((item) => {
@@ -134,13 +137,25 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
                     key={item.id}
                     style={[
                       styles.categoryPill,
-                      isSelected && { borderColor: item.color, backgroundColor: 'rgba(255,255,255,0.05)' }
+                      isSelected && {
+                        borderColor: item.color,
+                        backgroundColor: 'rgba(255,255,255,0.05)',
+                      },
                     ]}
                     onPress={() => setCategory(item.id)}
                     activeOpacity={0.7}
                   >
-                    <Icon color={isSelected ? item.color : '#64748b'} size={15} style={{ marginRight: 6 }} />
-                    <Text style={[styles.categoryText, isSelected && { color: '#fff', fontWeight: '700' }]}>
+                    <Icon
+                      color={isSelected ? item.color : '#64748b'}
+                      size={15}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        isSelected && { color: '#fff', fontWeight: '700' },
+                      ]}
+                    >
                       {item.label}
                     </Text>
                   </TouchableOpacity>
@@ -170,14 +185,18 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
             />
 
             {statusMessage && (
-              <View style={[
-                styles.statusBanner,
-                statusMessage.isSuccess ? styles.successBanner : styles.errorBanner
-              ]}>
-                <Text style={[
-                  styles.statusBannerText,
-                  statusMessage.isSuccess ? styles.successText : styles.errorText
-                ]}>
+              <View
+                style={[
+                  styles.statusBanner,
+                  statusMessage.isSuccess ? styles.successBanner : styles.errorBanner,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBannerText,
+                    statusMessage.isSuccess ? styles.successText : styles.errorText,
+                  ]}
+                >
                   {statusMessage.text}
                 </Text>
               </View>

@@ -63,10 +63,10 @@ To trigger an autonomous loop while pair programming, ask me to:
 ## 📦 App Store Release Notes ("What's New") Rule
 
 When compiling, building, and submitting production releases (EAS Build & Submit):
+
 1. **Gather Changes:** Extract the key new features, performance improvements, and bug fixes introduced in this particular build version.
 2. **iOS (TestFlight):** Always pass the `--what-to-test` CLI option during the `eas submit` execution. Formulate a clean, bulleted list of the new changes.
-   * *Example:* `npx eas-cli submit --platform ios --profile production --what-to-test "• Added in-app feedback drawer\n• Speed-adaptive background tracking"`
+   - _Example:_ `npx eas-cli submit --platform ios --profile production --what-to-test "• Added in-app feedback drawer\n• Speed-adaptive background tracking"`
 3. **Android (Google Play):** Because EAS Submit does not natively upload Android "What's New" release notes, you must:
-   * Write the exact release notes to a temporary/release file `whatsnew-android.txt` in the root of the project.
-   * Print this text clearly in your final response to the user so they can copy and paste it into the draft/release section of their Google Play Console.
-
+   - Write the exact release notes to a temporary/release file `whatsnew-android.txt` in the root of the project.
+   - Print this text clearly in your final response to the user so they can copy and paste it into the draft/release section of their Google Play Console.

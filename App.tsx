@@ -520,12 +520,7 @@ export default function App() {
         accuracy: Location.Accuracy.High,
       });
       setUserLocation(loc);
-      await publishLocation(
-        userName,
-        loc.coords.latitude,
-        loc.coords.longitude,
-        'Manual Refresh'
-      );
+      await publishLocation(userName, loc.coords.latitude, loc.coords.longitude, 'Manual Refresh');
       await fetchFamilyLocations();
       Vibration.vibrate(100);
       Alert.alert('Location Synchronized', 'Your position has been freshly pushed to your family!');
@@ -727,16 +722,13 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.10{"\n"}
+          Where's my family!! • v1.0.10{'\n'}
           E2EE Data Residency: Canada, Switzerland, or Iceland
         </Text>
       </ScrollView>
 
       {/* Slide-Up Feedback Drawer Modal */}
-      <FeedbackModal
-        visible={feedbackVisible}
-        onClose={() => setFeedbackVisible(false)}
-      />
+      <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
     </View>
   );
 }
