@@ -775,7 +775,7 @@
       let map;
       let markers = {};
       let trailLines = {};
-      let secondsLeft = 60;
+      let secondsLeft = 10;
       let currentData = {};
       let snappedTrails = {};
       let lastTrailHashes = {};
@@ -829,7 +829,7 @@
           if (secondsLeft <= 0) {
             indicator.textContent = 'Syncing...';
             fetchLocations();
-            secondsLeft = 60;
+            secondsLeft = 10;
           } else {
             indicator.textContent = `Refreshing in ${secondsLeft}s...`;
           }
