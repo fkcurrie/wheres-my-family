@@ -21,18 +21,38 @@ Notifications.setNotificationHandler({
 export const requestNotificationPermissions = async (): Promise<boolean> => {
   try {
     if (Platform.OS === 'android') {
+      // 1. Create Default Channel with Lock Screen visibility
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      // 2. Create Dedicated Nudges Channel with lock screen and heads-up enabled
+      await Notifications.setNotificationChannelAsync('nudges', {
+        name: 'Family Nudges',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 200, 500],
+        lightColor: '#e11d48',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false, // Strict focus compliance
       });
     }
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowDisplayInCarPlay: false,
+          allowCriticalAlerts: false,
+        },
+      });
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
@@ -74,9 +94,12 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
           body: 'Someone in your family is nudging you to check in!',
           sound: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,
+          ios: {
+            interruptionLevel: 'active', // Respect Focus & DND, show immediately on lock screen
+          },
         },
         trigger: {
-          channelId: 'default',
+          channelId: 'nudges',
         } as any,
       });
 
