@@ -20,9 +20,16 @@ These rules define guidelines, constraints, and instructions for all AI agents w
 - Keep all folder and import naming consistent.
 - Double-check filenames: imports must match the exact case of files on disk to prevent compilation failures on the Ubuntu-based GitHub Actions runners.
 
+### 4. Serverless API Security & Prototype Pollution Protection
+- **X-Mantle-Key Verification**: Every backend/serverless endpoint (including Vercel API routes and GCP Cloud Functions) must verify request authenticity by validating the `X-Mantle-Key` (or case-insensitive `x-mantle-key`) header against the server environment's `MANTLE_KEY`, returning `401 Unauthorized` on mismatch.
+- **Key Sanitization**: Before merging or writing client-supplied JSON keys into databases or documents, always apply a regex-based cleaning routine that strips path-traversal characters (`/`, `\`, `.`) and actively rejects prototype pollution keyword strings (`__proto__`, `constructor`, `prototype`) to block logical injection.
+
 ---
 
 ## ⚙️ Development & Verification Workflows
+
+### 0. Windows Shell Script Execution Guardrail
+- When running scripts or commands locally on a Windows shell host (like `npm`, `tsc`, `eslint`, or security tooling), always invoke or wrap the target command with `powershell -ExecutionPolicy Bypass -Command "..."` to prevent script execution security blocks (`PSSecurityException`).
 
 ### 1. Headless Map & DOM Checks
 - Before staging changes to web dashboards, verify script configurations, CDN dependencies, and DOM rendering elements.
