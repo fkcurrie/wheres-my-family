@@ -29,6 +29,7 @@ export interface FamilyMember {
   weatherDesc?: string;
   weatherIsSevere?: boolean;
   nudgeRequested?: boolean;
+  pingRequested?: boolean;
   updatedAt?: number;
   trail?: TrailCoord[];
   platform?: string;
