@@ -241,8 +241,10 @@ export default function MapViewContainer({
               const cleanTrail = cleanAndSortTrail(member.trail);
               if (cleanTrail.length < 2) return null;
 
-              // Use snapped coordinates from OSRM if available, otherwise fall back to clean trail coords
+              // Use snapped coordinates from OSRM if available (with dynamic cache-safe signature), otherwise fall back to clean trail coords
+              const cacheKey = `${member.id}-${cleanTrail.length}-${member.updatedAt || 0}`;
               const coordinates =
+                snappedTrails[cacheKey] ||
                 snappedTrails[member.id] ||
                 cleanTrail.map((pt: any) => ({
                   latitude: pt.latitude,

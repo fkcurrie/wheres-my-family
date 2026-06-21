@@ -9,6 +9,7 @@ interface FamilyListProps {
   userName: string | null;
   lastUpdatedTime: string;
   handleNudgeMember: (member: FamilyMember) => void;
+  handlePingMember: (member: FamilyMember) => void;
   handleDeleteMember: (member: FamilyMember) => void;
 }
 
@@ -45,11 +46,13 @@ const FamilyMemberCard = React.memo(
     member,
     userName,
     handleNudgeMember,
+    handlePingMember,
     handleDeleteMember,
   }: {
     member: FamilyMember;
     userName: string | null;
     handleNudgeMember: (member: FamilyMember) => void;
+    handlePingMember: (member: FamilyMember) => void;
     handleDeleteMember: (member: FamilyMember) => void;
   }) => {
     return (
@@ -152,9 +155,7 @@ const FamilyMemberCard = React.memo(
             )}
             <TouchableOpacity
               style={styles.pingButton}
-              onPress={() =>
-                Alert.alert(`Ping Sent`, `Requested immediate location update from ${member.name}.`)
-              }
+              onPress={() => handlePingMember(member)}
             >
               <Text style={styles.pingText}>Ping Device</Text>
             </TouchableOpacity>
@@ -183,6 +184,7 @@ const FamilyMemberCard = React.memo(
       prev.member.weatherTemp === next.member.weatherTemp &&
       prev.member.weatherIsSevere === next.member.weatherIsSevere &&
       prev.member.nudgeRequested === next.member.nudgeRequested &&
+      prev.member.pingRequested === next.member.pingRequested &&
       prev.userName === next.userName
     );
   }
@@ -193,6 +195,7 @@ export default function FamilyList({
   userName,
   lastUpdatedTime,
   handleNudgeMember,
+  handlePingMember,
   handleDeleteMember,
 }: FamilyListProps) {
   return (
@@ -212,6 +215,7 @@ export default function FamilyList({
           member={member}
           userName={userName}
           handleNudgeMember={handleNudgeMember}
+          handlePingMember={handlePingMember}
           handleDeleteMember={handleDeleteMember}
         />
       ))}

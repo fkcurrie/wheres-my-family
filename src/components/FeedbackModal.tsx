@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { X, MessageSquare, AlertTriangle, Lightbulb, Zap, HelpCircle } from 'lucide-react-native';
 import { addDiagnosticLog } from '../services/Logger';
+import { MANTLE_DB_URL, MANTLE_KEY } from '../services/MantleDB';
 
 interface FeedbackModalProps {
   visible: boolean;
@@ -45,9 +46,8 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
     setSubmitting(true);
     setStatusMessage(null);
 
-    const githubApiUrl = 'https://api.github.com/repos/fkcurrie/wheres-my-family/issues';
     await addDiagnosticLog(
-      `[Feedback] Dispatching ${category} issue: "${title}" directly to GitHub API`
+      `[Feedback] Dispatching ${category} issue: "${title}" to secure Toronto backend proxy`
     );
 
     // Category mapping to GitHub labels
@@ -61,15 +61,14 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-      const response = await fetch(githubApiUrl, {
+      const response = await fetch(MANTLE_DB_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'token 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',
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'WheresMyFamilyApp',
+          'X-Mantle-Key': MANTLE_KEY,
         },
         body: JSON.stringify({
+          type: 'feedback',
           title: `[Feedback] ${title.trim()}`,
           body: details.trim(),
           labels: [label],
@@ -89,15 +88,15 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
         setTitle('');
         setDetails('');
       } else {
-        const errMsg = data.message || 'GitHub API rejected the feedback payload.';
-        await addDiagnosticLog(`[Feedback Error] GitHub rejected submission: ${errMsg}`);
+        const errMsg = data.message || 'GCP Backend rejected the feedback payload.';
+        await addDiagnosticLog(`[Feedback Error] Backend rejected submission: ${errMsg}`);
         setStatusMessage({ text: errMsg, isSuccess: false });
       }
     } catch (err: any) {
       const errMsg =
         err.name === 'AbortError'
-          ? 'Connection to GitHub timed out. Please check your network connection.'
-          : 'Could not connect to GitHub. Please ensure your device is connected to the internet.';
+          ? 'Connection to backend timed out. Please check your network connection.'
+          : 'Could not connect to backend. Please ensure your device is connected to the internet.';
 
       await addDiagnosticLog(`[Feedback Error] Connection failed: ${err.message || String(err)}`);
       setStatusMessage({ text: errMsg, isSuccess: false });

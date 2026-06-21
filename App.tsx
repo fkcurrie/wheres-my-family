@@ -17,7 +17,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ShieldAlert, Share2, RefreshCw, Info, MessageSquare } from 'lucide-react-native';
+import { ShieldAlert, Share2, RefreshCw, Info, MessageSquare, Settings } from 'lucide-react-native';
 
 // --- Modular Service & Component Imports ---
 import { addDiagnosticLog } from './src/services/Logger';
@@ -27,6 +27,7 @@ import {
   fetchMantleDB,
   publishLocation,
   requestNudgeMember,
+  requestPingMember,
   deleteMember,
   clearNudgeState,
 } from './src/services/MantleDB';
@@ -38,6 +39,8 @@ import FamilyList from './src/components/FamilyList';
 import MapViewContainer from './src/components/MapViewContainer';
 import LogTerminal from './src/components/LogTerminal';
 import FeedbackModal from './src/components/FeedbackModal';
+import SettingsModal from './src/components/SettingsModal';
+import { loadCustomFamilyKey } from './src/services/Crypto';
 
 // --- Background Task Names ---
 const LOCATION_TRACKING_TASK_NAME = 'background-location-task';
@@ -195,6 +198,7 @@ export default function App() {
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
   const [showTriageConsole, setShowTriageConsole] = useState<boolean>(false);
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
+  const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
 
   const mapRef = useRef<MapView | null>(null);
   const userLocationRef = useRef<Location.LocationObject | null>(null);
@@ -213,6 +217,19 @@ export default function App() {
   useEffect(() => {
     const initializeProfile = async () => {
       try {
+        // Load custom encryption key if any
+        const loadedKey = await loadCustomFamilyKey();
+        await addDiagnosticLog(
+          `[Crypto] Loaded active E2EE key signature: ${loadedKey === 'WheresMyFamilySecureKey2026' ? 'Default' : 'Custom'}`
+        );
+
+        // Sync background tracking state with actual OS TaskManager registration
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
+        setIsBackgroundTracking(isRegistered);
+        if (isRegistered) {
+          setPermissionStatus('Granted (Background Active)');
+        }
+
         const savedName = await AsyncStorage.getItem('user_name');
         if (savedName) {
           setUserName(savedName);
@@ -246,6 +263,35 @@ export default function App() {
           await addDiagnosticLog(`[Nudge] RECEIVED a nudge vibration request in foreground!`);
           Alert.alert('📳 Family Nudge!', 'Someone in your family is nudging you to check in!');
           await clearNudgeState(userName, data[userName]);
+        }
+
+        // Direct local ping foreground handling
+        if (userName && data[userName] && data[userName].pingRequested === true) {
+          await addDiagnosticLog(`[Ping] RECEIVED a ping request in foreground! Responding immediately.`);
+          try {
+            const loc = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.High,
+            });
+            await publishLocation(
+              userName,
+              loc.coords.latitude,
+              loc.coords.longitude,
+              'Ping Response (FG)',
+              { pingRequested: false }
+            );
+            await addDiagnosticLog(`[Ping Success] Responded to foreground ping.`);
+          } catch (err: any) {
+            console.warn('[Foreground Ping Response Error]:', err);
+            await addDiagnosticLog(`[Foreground Ping Error] Failed: ${err.message || String(err)}`);
+            // Clear pingRequested state anyway to prevent infinite loops
+            await publishLocation(
+              userName,
+              userLocationRef.current?.coords.latitude || 46.8182,
+              userLocationRef.current?.coords.longitude || 8.2275,
+              'Ping Response (FG - Cache Fallback)',
+              { pingRequested: false }
+            );
+          }
         }
 
         const currentUserLoc = userLocationRef.current;
@@ -350,13 +396,16 @@ export default function App() {
       for (const member of familyMembers) {
         const cleanTrail = cleanAndSortTrail(member.trail);
         if (cleanTrail.length >= 2) {
-          // If already snapped, avoid re-fetching
-          if (newSnappedTrails[member.id]) continue;
+          // Dynamic trail signature cache key
+          const cacheKey = `${member.id}-${cleanTrail.length}-${member.updatedAt || 0}`;
+
+          // If already snapped with this signature, avoid re-fetching
+          if (newSnappedTrails[cacheKey]) continue;
 
           try {
             await addDiagnosticLog(`[OSRM] Requesting snapped route caching for ${member.name}`);
             const snapped = await fetchSnappedTrail(cleanTrail);
-            newSnappedTrails[member.id] = snapped;
+            newSnappedTrails[cacheKey] = snapped;
             changed = true;
           } catch (err) {
             console.warn(`[OSRM App Error]: Snap failed for ${member.name}:`, err);
@@ -558,6 +607,20 @@ export default function App() {
     }
   };
 
+  // Trigger Immediate High-Accuracy GPS Ping request for family member
+  const handlePingMember = async (member: FamilyMember) => {
+    try {
+      await requestPingMember(member);
+      Alert.alert(
+        '📍 Ping Dispatched',
+        `Requested immediate location update from ${member.name}.`
+      );
+      await addDiagnosticLog(`[Ping Outbound] Pinged member: "${member.name}"`);
+    } catch (err) {
+      Alert.alert('Ping Failed', 'Failed to dispatch immediate GPS ping.');
+    }
+  };
+
   // Perform permanent deletion of device/member node
   const handleDeleteMember = async (member: FamilyMember) => {
     Alert.alert(
@@ -668,6 +731,16 @@ export default function App() {
           <TouchableOpacity
             style={styles.shareIconHeader}
             onPress={async () => {
+              await addDiagnosticLog('[UI] Settings button pressed in header');
+              setSettingsVisible(true);
+            }}
+            accessibilityLabel="System Settings"
+          >
+            <Settings color="#10b981" size={20} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shareIconHeader}
+            onPress={async () => {
               await addDiagnosticLog('[UI] Feedback button pressed in header');
               setFeedbackVisible(true);
             }}
@@ -725,6 +798,7 @@ export default function App() {
           userName={userName}
           lastUpdatedTime={lastUpdatedTime}
           handleNudgeMember={handleNudgeMember}
+          handlePingMember={handlePingMember}
           handleDeleteMember={handleDeleteMember}
         />
 
@@ -736,13 +810,46 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.14{'\n'}
+          Where's my family!! • v1.0.15{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>
 
       {/* Slide-Up Feedback Drawer Modal */}
       <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
+
+      {/* Slide-Up Settings Drawer Modal */}
+      <SettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        currentName={userName || ''}
+        onSaveName={async (newName) => {
+          await AsyncStorage.setItem('user_name', newName);
+          setUserName(newName);
+          if (userLocation) {
+            await publishLocation(
+              newName,
+              userLocation.coords.latitude,
+              userLocation.coords.longitude,
+              'Name Updated'
+            );
+          }
+          await fetchFamilyLocations();
+        }}
+        isBackgroundTracking={isBackgroundTracking}
+        onToggleBackgroundTracking={handleToggleBackgroundTracking}
+        onKeyChange={async () => {
+          if (userName && userLocation) {
+            await publishLocation(
+              userName,
+              userLocation.coords.latitude,
+              userLocation.coords.longitude,
+              'E2EE Key Updated'
+            );
+          }
+          await fetchFamilyLocations();
+        }}
+      />
     </View>
   );
 }

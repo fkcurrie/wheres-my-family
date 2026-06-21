@@ -237,6 +237,38 @@ export const clearNudgeState = async (savedName: string, currentUserData: any) =
   });
 };
 
+
+/**
+ * Trigger / request an immediate high-accuracy GPS update for a family member
+ */
+export const requestPingMember = async (member: any) => {
+  const payload = {
+    [member.name]: {
+      name: member.name,
+      latitude: member.latitude,
+      longitude: member.longitude,
+      status: member.status,
+      battery: member.battery,
+      charging: member.charging,
+      deviceStatus: member.deviceStatus,
+      updatedAt: member.updatedAt || Date.now(),
+      weatherTemp: member.weatherTemp,
+      weatherEmoji: member.weatherEmoji,
+      weatherDesc: member.weatherDesc,
+      weatherIsSevere: member.weatherIsSevere,
+      pingRequested: true,
+    },
+  };
+  await fetch(MANTLE_DB_URL, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Mantle-Key': MANTLE_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+};
+
 /**
  * Permanently Delete / Retire Device from Family List
  */

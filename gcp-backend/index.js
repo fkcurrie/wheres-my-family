@@ -24,6 +24,49 @@ functions.http('locations', async (req, res) => {
   const collectionRef = db.collection('locations');
 
   try {
+    // 1. Secure GitHub Forwarding Proxy (POST request with type === 'feedback')
+    if (req.method === 'POST' && req.body && req.body.type === 'feedback') {
+      const { title, body, labels } = req.body;
+      if (!title || !body) {
+        return res.status(400).json({ error: 'Title and body are required for feedback.' });
+      }
+
+      const githubToken = process.env.GITHUB_TOKEN;
+      if (!githubToken) {
+        console.error('[GCP Backend] Missing GITHUB_TOKEN environment variable.');
+        return res.status(500).json({ error: 'GitHub issue forwarding is not configured on the server.' });
+      }
+
+      try {
+        const ghResponse = await fetch('https://api.github.com/repos/fkcurrie/wheres-my-family/issues', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `token ${githubToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'WheresMyFamilyBackendProxy'
+          },
+          body: JSON.stringify({
+            title,
+            body,
+            labels
+          })
+        });
+
+        const data = await ghResponse.json();
+        if (ghResponse.ok && data.html_url) {
+          console.log(`[GCP Backend] Successfully created GitHub issue: ${data.html_url}`);
+          return res.status(201).json({ html_url: data.html_url });
+        } else {
+          console.error('[GCP Backend] GitHub API error:', data);
+          return res.status(ghResponse.status).json({ error: data.message || 'GitHub issue creation failed' });
+        }
+      } catch (err) {
+        console.error('[GCP Backend] Failed to forward issue to GitHub:', err);
+        return res.status(500).json({ error: 'Failed to communicate with GitHub API', details: err.message });
+      }
+    }
+
     if (req.method === 'GET') {
       const snapshot = await collectionRef.get();
       const responseData = {};
@@ -39,10 +82,17 @@ functions.http('locations', async (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON payload' });
       }
 
-      // Perform Batch updates / deletes
+      // Perform Batch updates / deletes with key path traversal sanitization
       const batch = db.batch();
       for (const key of Object.keys(updatePayload)) {
-        const docRef = collectionRef.doc(key);
+        const cleanKey = key.trim();
+        // Prevent path traversal injection
+        if (!cleanKey || cleanKey.includes('/') || cleanKey.includes('.') || cleanKey.includes('\\')) {
+          console.warn(`[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`);
+          continue;
+        }
+
+        const docRef = collectionRef.doc(cleanKey);
         if (updatePayload[key] === null) {
           batch.delete(docRef);
         } else {

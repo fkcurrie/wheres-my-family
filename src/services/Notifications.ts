@@ -1,7 +1,8 @@
 import { Platform, Vibration } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as Location from 'expo-location';
 import { addDiagnosticLog } from './Logger';
-import { MANTLE_DB_URL, MANTLE_KEY } from './MantleDB';
+import { MANTLE_DB_URL, MANTLE_KEY, publishLocation } from './MantleDB';
 
 // Configure local notification behaviors globally
 Notifications.setNotificationHandler({
@@ -78,51 +79,98 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
       },
     });
     const data = await res.json();
-    if (data && !data.error && data[savedName] && data[savedName].nudgeRequested === true) {
-      console.log(`[Nudge Backend] Nudge detected in background for user: "${savedName}"`);
-      await addDiagnosticLog(
-        `[Background Nudge] RECEIVED nudge in background! Triggering notification.`
-      );
+    if (data && !data.error && data[savedName]) {
+      const userData = data[savedName];
+      let triggeredNudge = false;
 
-      // 1. Play vibration
-      Vibration.vibrate([0, 500, 200, 500]);
+      // 1. Process Background Ping (GPS Pull) Request
+      if (userData.pingRequested === true) {
+        console.log(`[Ping Backend] Ping detected in background for user: "${savedName}"`);
+        await addDiagnosticLog(`[Background Ping] RECEIVED ping request! Responding immediately.`);
+        try {
+          // Immediately fetch the current high-accuracy location
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          // Publish the updated location with status "Ping Response (BG)" and clear the pingRequested flag
+          await publishLocation(
+            savedName,
+            loc.coords.latitude,
+            loc.coords.longitude,
+            'Ping Response (BG)',
+            { pingRequested: false }
+          );
+          await addDiagnosticLog(`[Background Ping] Successfully processed ping and pushed location.`);
+        } catch (err: any) {
+          console.warn('[Background Ping Response Error]:', err);
+          await addDiagnosticLog(`[Background Ping Error] Failed: ${err.message || String(err)}`);
+          // Clear pingRequested anyway to prevent infinite loops
+          const clearedUser = {
+            ...userData,
+            pingRequested: false,
+          };
+          await fetch(MANTLE_DB_URL, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Mantle-Key': MANTLE_KEY,
+            },
+            body: JSON.stringify({
+              [savedName]: clearedUser,
+            }),
+          });
+        }
+      }
 
-      // 2. Schedule OS level local notification immediately
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '📳 Family Nudge!',
-          body: 'Someone in your family is nudging you to check in!',
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-          interruptionLevel: 'active', // Respect Focus & DND, show immediately on lock screen (iOS)
-        },
-        trigger: {
-          channelId: 'nudges',
-        } as any,
-      });
+      // 2. Process Background Nudge Request
+      if (userData.nudgeRequested === true) {
+        console.log(`[Nudge Backend] Nudge detected in background for user: "${savedName}"`);
+        await addDiagnosticLog(
+          `[Background Nudge] RECEIVED nudge in background! Triggering notification.`
+        );
 
-      // 3. Clear the nudgeRequested state in DB immediately
-      const clearedUser = {
-        ...data[savedName],
-        nudgeRequested: false,
-      };
-      await fetch(MANTLE_DB_URL, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Mantle-Key': MANTLE_KEY,
-        },
-        body: JSON.stringify({
-          [savedName]: clearedUser,
-        }),
-      });
-      await addDiagnosticLog('[Background Nudge] Cleared nudge flag on MantleDB.');
-      return true;
+        // Play vibration
+        Vibration.vibrate([0, 500, 200, 500]);
+
+        // Schedule OS level local notification immediately
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '📳 Family Nudge!',
+            body: 'Someone in your family is nudging you to check in!',
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            interruptionLevel: 'active', // Respect Focus & DND, show immediately on lock screen (iOS)
+          },
+          trigger: {
+            channelId: 'nudges',
+          } as any,
+        });
+
+        // Clear the nudgeRequested state in DB immediately
+        const clearedUser = {
+          ...data[savedName],
+          nudgeRequested: false,
+        };
+        await fetch(MANTLE_DB_URL, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mantle-Key': MANTLE_KEY,
+          },
+          body: JSON.stringify({
+            [savedName]: clearedUser,
+          }),
+        });
+        await addDiagnosticLog('[Background Nudge] Cleared nudge flag on MantleDB.');
+        triggeredNudge = true;
+      }
+
+      return triggeredNudge;
     }
   } catch (err) {
     console.warn('[checkAndHandleNudge Error]:', err);
     await addDiagnosticLog(
-      `[Background Nudge Error] Failed checking nudge: ${err instanceof Error ? err.message : String(err)}`
+      `[Background Nudge Error] Failed checking nudge/ping: ${err instanceof Error ? err.message : String(err)}`
     );
   }
   return false;

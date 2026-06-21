@@ -17,6 +17,9 @@
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css" />
     <script src="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.js"></script>
 
+    <!-- CryptoJS CDN for Secure AES Decryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+
     <style>
       /* Premium CSS Variables and Styling System */
       :root {
@@ -101,6 +104,72 @@
         border-radius: 50%;
         box-shadow: 0 0 12px var(--accent-emerald);
         animation: pulse 1.8s infinite;
+      }
+
+      /* E2EE Header Settings Style */
+      .e2ee-header-settings {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.05);
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        padding: 6px 12px;
+        border-radius: 20px;
+        backdrop-filter: blur(8px);
+        margin-left: auto;
+        margin-right: 24px;
+        transition: all 0.3s ease;
+      }
+
+      .e2ee-header-settings:focus-within {
+        background: rgba(15, 23, 42, 0.08);
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+      }
+
+      .e2ee-lock-icon {
+        font-size: 13px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      #e2ee-key-input {
+        background: transparent;
+        border: none;
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--text-primary);
+        width: 160px;
+        outline: none;
+      }
+
+      #toggle-key-visibility {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0 4px;
+        font-size: 14px;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #toggle-key-visibility:hover {
+        opacity: 1;
+      }
+
+      @media (max-width: 768px) {
+        .e2ee-header-settings {
+          margin-right: 12px;
+        }
+        #e2ee-key-input {
+          width: 100px;
+        }
       }
 
       /* Main Dashboard Layout */
@@ -511,6 +580,14 @@
           <h1 class="brand-title">Where's My Family!!</h1>
         </div>
       </div>
+
+      <!-- Premium Glassmorphic E2EE Settings Panel -->
+      <div class="e2ee-header-settings">
+        <span class="e2ee-lock-icon" title="End-to-End Encryption (E2EE) Status">🔒 E2EE Key:</span>
+        <input type="password" id="e2ee-key-input" placeholder="Enter Family Key (Optional)" title="Enter custom E2EE key used by family members" />
+        <button id="toggle-key-visibility" title="Show/Hide Key" type="button">👁️</button>
+      </div>
+
       <div class="status-badge">
         <div class="status-dot"></div>
         <span id="system-status">Live Tracking Active</span>
@@ -583,6 +660,63 @@
 
       // --- End-to-End Encryption (E2EE) Symmetric Decryption Helpers ---
       const DEFAULT_FAMILY_KEY = 'WheresMyFamilySecureKey2026';
+      let activeFamilyKey = DEFAULT_FAMILY_KEY;
+
+      function initE2EEKey() {
+        // 1. Check URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let key = urlParams.get('key') || urlParams.get('family_key');
+        
+        if (key) {
+          key = key.trim();
+          localStorage.setItem('custom_family_key', key);
+        } else {
+          // 2. Check localStorage
+          key = localStorage.getItem('custom_family_key');
+        }
+
+        const inputEl = document.getElementById('e2ee-key-input');
+        if (key && key.trim()) {
+          activeFamilyKey = key.trim();
+          if (inputEl) {
+            inputEl.value = activeFamilyKey;
+          }
+        } else {
+          activeFamilyKey = DEFAULT_FAMILY_KEY;
+          if (inputEl) {
+            inputEl.value = '';
+          }
+        }
+
+        // Set up listeners if elements exist
+        if (inputEl) {
+          inputEl.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (val) {
+              activeFamilyKey = val;
+              localStorage.setItem('custom_family_key', val);
+            } else {
+              activeFamilyKey = DEFAULT_FAMILY_KEY;
+              localStorage.removeItem('custom_family_key');
+            }
+            // Trigger an immediate data refresh to decrypt coordinates with the new key!
+            fetchLocations();
+          });
+        }
+
+        const toggleEl = document.getElementById('toggle-key-visibility');
+        if (toggleEl && inputEl) {
+          toggleEl.addEventListener('click', () => {
+            if (inputEl.type === 'password') {
+              inputEl.type = 'text';
+              toggleEl.textContent = '🙈';
+            } else {
+              inputEl.type = 'password';
+              toggleEl.textContent = '👁️';
+            }
+          });
+        }
+      }
 
       function xorEncryptDecrypt(input, key) {
         let output = '';
@@ -593,25 +727,47 @@
         return output;
       }
 
-      function decryptString(hex, key = DEFAULT_FAMILY_KEY) {
-        if (!hex) return '';
-        let xor = '';
-        for (let i = 0; i < hex.length; i += 2) {
-          const charCode = parseInt(hex.substring(i, i + 2), 16);
-          if (!isNaN(charCode)) {
-            xor += String.fromCharCode(charCode);
+      function decryptString(ciphertext, key = activeFamilyKey) {
+        if (!ciphertext) return '';
+
+        // 1. Try standard AES Decryption first (v1.0.15+)
+        try {
+          const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+          const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+          if (decrypted) {
+            return decrypted;
           }
+        } catch (err) {
+          // Fall through to legacy XOR fallback
         }
-        return xorEncryptDecrypt(xor, key);
+
+        // 2. Legacy Fallback: Try XOR-Hex decryption (for smooth upgrade rollouts)
+        try {
+          const isHex = ciphertext.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(ciphertext);
+          if (isHex) {
+            let xorPlaintext = '';
+            for (let i = 0; i < ciphertext.length; i += 2) {
+              const charCode = parseInt(ciphertext.substring(i, i + 2), 16);
+              if (!isNaN(charCode)) {
+                xorPlaintext += String.fromCharCode(charCode);
+              }
+            }
+            return xorEncryptDecrypt(xorPlaintext, key);
+          }
+        } catch (err) {
+          console.warn('[Crypto] Legacy fallback decryption failed:', err);
+        }
+
+        return '';
       }
 
-      function decryptValue(hex, key = DEFAULT_FAMILY_KEY) {
+      function decryptValue(ciphertext, key = activeFamilyKey) {
         try {
-          const decryptedStr = decryptString(hex, key);
+          const decryptedStr = decryptString(ciphertext, key);
           if (!decryptedStr) return null;
           return JSON.parse(decryptedStr);
         } catch (e) {
-          console.warn('[Crypto] Failed to decrypt value:', e);
+          console.warn('[Crypto] Failed parsing decrypted JSON value:', e);
           return null;
         }
       }
@@ -1495,6 +1651,7 @@
 
       // Run On Boot
       window.onload = () => {
+        initE2EEKey();
         initMap();
         fetchLocations();
         startRefreshCountdown();
