@@ -36,3 +36,15 @@ Use this skill when auditing source files, changing API integrations, modifying 
 1. Check for vulnerable package configurations or obsolete dependencies.
 2. Periodically run `npm audit` inside the workspace folder to review package advisories.
 3. Avoid experimental pre-release typescript versions or untrusted libraries. Ensure standard, stable, well-vetted libraries are used (e.g. `crypto-js` for AES-256 operations).
+
+---
+
+## 📋 Step 4: Formulating Recommendations & Remediation Plans
+
+1. For every finding discovered during steps 1-3, formulate a clear, actionable remediation recommendation.
+2. Classify findings and recommendations by severity level:
+   - **🔴 Critical/High Severity:** Immediate action required (e.g., hardcoded credentials, unauthenticated endpoints).
+   - **🟡 Moderate Severity:** Action recommended during next iteration cycle (e.g., package vulnerability in build tools, permissive CORS headers).
+   - **🟢 Low/Info Severity:** Informational best practices (e.g., code stylistic patterns, minor dependency updates).
+3. Draft a structured, prioritized "Security Remediation Roadmap" in your audit report that guides the user on precisely how to patch the issues securely.
+
