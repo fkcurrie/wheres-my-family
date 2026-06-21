@@ -8,6 +8,7 @@ import { cleanAndSortTrail } from '../services/OSRM';
 interface MapViewContainerProps {
   userLocation: any | null;
   familyMembers: FamilyMember[];
+  userName: string | null;
   showTrails: boolean;
   setShowTrails: (val: boolean) => void;
   snappedTrails: Record<string, TrailCoord[]>;
@@ -103,6 +104,7 @@ const precomputeTrailTimestamps = (
 
 /**
  * Highly optimized memoized Map Marker to prevent expensive native marker recreation
+ * Renders a premium custom View featuring member initials and high-contrast solid backgrounds
  */
 const MemoizedMarker = React.memo(
   ({
@@ -116,8 +118,21 @@ const MemoizedMarker = React.memo(
     description: string;
     pinColor: string;
   }) => {
+    const initials = title === 'You' ? 'ME' : title.substring(0, 2).toUpperCase();
     return (
-      <Marker coordinate={coordinate} title={title} description={description} pinColor={pinColor} />
+      <Marker
+        coordinate={coordinate}
+        title={title}
+        description={description}
+        anchor={{ x: 0.5, y: 1.0 }}
+      >
+        <View style={styles.customMarkerContainer}>
+          <View style={[styles.customMarkerBubble, { backgroundColor: pinColor }]}>
+            <Text style={styles.customMarkerText}>{initials}</Text>
+          </View>
+          <View style={[styles.customMarkerArrow, { borderTopColor: pinColor }]} />
+        </View>
+      </Marker>
     );
   },
   (prev, next) => {
@@ -134,6 +149,7 @@ const MemoizedMarker = React.memo(
 export default function MapViewContainer({
   userLocation,
   familyMembers,
+  userName,
   showTrails,
   setShowTrails,
   snappedTrails,
@@ -196,26 +212,28 @@ export default function MapViewContainer({
           )}
 
           {/* Family Members' Markers */}
-          {familyMembers.map((member) => {
-            const memberLat =
-              member.latitude !== undefined
-                ? member.latitude
-                : (userLocation?.coords.latitude || 43.6532) + (member.latOffset || 0) / 5000;
-            const memberLng =
-              member.longitude !== undefined
-                ? member.longitude
-                : (userLocation?.coords.longitude || -79.3832) + (member.lngOffset || 0) / 5000;
+          {familyMembers
+            .filter((member) => member.name !== userName)
+            .map((member) => {
+              const memberLat =
+                member.latitude !== undefined
+                  ? member.latitude
+                  : (userLocation?.coords.latitude || 43.6532) + (member.latOffset || 0) / 5000;
+              const memberLng =
+                member.longitude !== undefined
+                  ? member.longitude
+                  : (userLocation?.coords.longitude || -79.3832) + (member.lngOffset || 0) / 5000;
 
-            return (
-              <MemoizedMarker
-                key={member.id}
-                coordinate={{ latitude: memberLat, longitude: memberLng }}
-                title={member.name}
-                description={`${member.status} (${member.distance})`}
-                pinColor={member.color}
-              />
-            );
-          })}
+              return (
+                <MemoizedMarker
+                  key={member.id}
+                  coordinate={{ latitude: memberLat, longitude: memberLng }}
+                  title={member.name}
+                  description={`${member.status} (${member.distance})`}
+                  pinColor={member.color}
+                />
+              );
+            })}
 
           {/* Color-graded Trails */}
           {showTrails &&
@@ -358,5 +376,42 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 3,
+  },
+  customMarkerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    width: 36,
+  },
+  customMarkerBubble: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  customMarkerText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  customMarkerArrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    marginTop: -1,
   },
 });

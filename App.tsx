@@ -274,7 +274,20 @@ export default function App() {
               }
             }
 
-            const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+            const colors = [
+              '#3b82f6', // Royal Blue
+              '#10b981', // Emerald Green
+              '#f59e0b', // Amber Orange
+              '#ec4899', // Hot Pink
+              '#8b5cf6', // Purple
+              '#06b6d4', // Turquoise/Cyan
+              '#ef4444', // Crimson Red
+              '#f97316', // Orange
+              '#eab308', // Sunflower Yellow
+              '#14b8a6', // Teal
+              '#d946ef', // Fuchsia
+              '#6366f1', // Indigo
+            ];
             const colorIdx =
               Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) %
               colors.length;
@@ -677,6 +690,7 @@ export default function App() {
         <MapViewContainer
           userLocation={userLocation}
           familyMembers={familyMembers}
+          userName={userName}
           showTrails={showTrails}
           setShowTrails={setShowTrails}
           snappedTrails={snappedTrails}
