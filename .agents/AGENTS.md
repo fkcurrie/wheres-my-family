@@ -21,8 +21,12 @@ These rules define guidelines, constraints, and instructions for all AI agents w
 - Double-check filenames: imports must match the exact case of files on disk to prevent compilation failures on the Ubuntu-based GitHub Actions runners.
 
 ### 4. Serverless API Security & Prototype Pollution Protection
-- **X-Mantle-Key Verification**: Every backend/serverless endpoint (including Vercel API routes and GCP Cloud Functions) must verify request authenticity by validating the `X-Mantle-Key` (or case-insensitive `x-mantle-key`) header against the server environment's `MANTLE_KEY`, returning `401 Unauthorized` on mismatch.
+- **X-Mantle-Key Verification**: Every backend/serverless endpoint (including GCP Cloud Functions and Cloud Run endpoints) must verify request authenticity by validating the `X-Mantle-Key` (or case-insensitive `x-mantle-key`) header against the server environment's `MANTLE_KEY`, returning `401 Unauthorized` on mismatch.
 - **Key Sanitization**: Before merging or writing client-supplied JSON keys into databases or documents, always apply a regex-based cleaning routine that strips path-traversal characters (`/`, `\`, `.`) and actively rejects prototype pollution keyword strings (`__proto__`, `constructor`, `prototype`) to block logical injection.
+
+### 5. Production Hosting & Deployment residency
+- **GCP Cloud Run Exclusively**: The web dashboard is hosted and executed exclusively via Google Cloud Run inside GCP project `wheres-my-family-499822` (Toronto region `northamerica-northeast2`). 
+- **Vercel Decommissioned**: Vercel is 100% decommissioned and no longer used. Under no circumstances should Vercel deployment commands or configurations (`vercel.json`) be generated, modified, or executed.
 
 ---
 

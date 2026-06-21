@@ -87,7 +87,7 @@ function verifyHTMLFile(filePath, label) {
 
 // Check both files
 const rootContent = verifyHTMLFile(rootDashPath, 'Root Dashboard');
-const webContent = verifyHTMLFile(webDashPath, 'Vercel Web Dashboard');
+const webContent = verifyHTMLFile(webDashPath, 'Cloud Run Web Dashboard');
 
 // Compare files
 if (rootContent && webContent) {
