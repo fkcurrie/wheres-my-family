@@ -1,0 +1,7 @@
+• Map Interaction Upgrade: Tap any family member card to instantly zoom and center the map on their location, with soft haptic confirmation.
+• Enhanced Map View: Expanded the tracking map canvas by 25% for superior neighborhood situational awareness.
+• Passkey Privacy Protection: Secured the E2EE Passkey input under high-privacy bullet-masking by default to prevent shoulder-surfing, with a quick show/hide eye toggle.
+• Smart Battery Telemetry: Swaps battery status indicators dynamically on-screen to accurately match device charge levels and charging states.
+• Accident Prevention Guardrail: Hid the "Remove" button on your own card to prevent accidental self-deletion of your device node.
+• Touch Safety Improvements: Enlarged the "Center on Me" button to 48x48 dp for enhanced target accuracy.
+• Onboarding Comfort: Added word auto-capitalization and keyboard "Enter" submit support to speed up device setup.

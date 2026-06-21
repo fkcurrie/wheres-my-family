@@ -646,6 +646,28 @@ export default function App() {
     );
   };
 
+  // Pan and center map to show selected family member
+  const handleMemberPress = useCallback((member: FamilyMember) => {
+    if (member.latitude !== undefined && member.longitude !== undefined && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: member.latitude,
+          longitude: member.longitude,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        1000
+      );
+      Vibration.vibrate(50);
+      addDiagnosticLog(`[UI] Focused map camera on selected member: "${member.name}"`);
+    } else {
+      Alert.alert(
+        'Location Unavailable',
+        `No coordinate data has been received yet for ${member.name}.`
+      );
+    }
+  }, []);
+
   // Share App Invitation Instructions
   const shareAppInvite = async () => {
     const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/YOUR_CODE';
@@ -800,6 +822,7 @@ export default function App() {
           handleNudgeMember={handleNudgeMember}
           handlePingMember={handlePingMember}
           handleDeleteMember={handleDeleteMember}
+          onMemberPress={handleMemberPress}
         />
 
         {/* Global Real-time Diagnostics Terminal Overlay */}
@@ -810,7 +833,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.15{'\n'}
+          Where's my family!! • v1.0.17{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

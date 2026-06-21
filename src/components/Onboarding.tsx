@@ -28,6 +28,9 @@ export default function Onboarding({ inputName, setInputName, handleSaveName }: 
           placeholder="e.g. Mum, Dad, Chloe, Jack"
           placeholderTextColor="#64748b"
           autoFocus
+          autoCapitalize="words"
+          returnKeyType="done"
+          onSubmitEditing={handleSaveName}
         />
 
         <TouchableOpacity style={styles.onboardingButton} onPress={handleSaveName}>

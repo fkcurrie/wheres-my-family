@@ -12,7 +12,7 @@ import {
   Switch,
   Alert,
 } from 'react-native';
-import { X, Settings, User, Lock, Map } from 'lucide-react-native';
+import { X, Settings, User, Lock, Map, Eye, EyeOff } from 'lucide-react-native';
 import { getActiveFamilyKey, setCustomFamilyKey } from '../services/Crypto';
 import { addDiagnosticLog } from '../services/Logger';
 
@@ -37,6 +37,7 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const [name, setName] = useState<string>(currentName);
   const [familyKey, setFamilyKey] = useState<string>('');
+  const [showPasskey, setShowPasskey] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
 
   // Load the active family key on open
@@ -109,6 +110,9 @@ export default function SettingsModal({
               onChangeText={setName}
               placeholder="e.g., Mum, Dad, Chloe, Jack"
               placeholderTextColor="#475569"
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
             />
             <Text style={styles.helperText}>
               This identifies your device node on the live maps of other family members.
@@ -140,15 +144,25 @@ export default function SettingsModal({
               <Lock color="#f59e0b" size={16} style={{ marginRight: 6 }} />
               <Text style={styles.sectionLabel}>End-To-End (E2EE) Passkey</Text>
             </View>
-            <TextInput
-              style={[styles.textInput, styles.passwordInput]}
-              value={familyKey}
-              onChangeText={setFamilyKey}
-              placeholder="Enter custom family key"
-              placeholderTextColor="#475569"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={[styles.textInput, styles.passwordInput, { flex: 1, marginBottom: 0 }]}
+                value={familyKey}
+                onChangeText={setFamilyKey}
+                placeholder="Enter custom family key"
+                placeholderTextColor="#475569"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showPasskey}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPasskey(!showPasskey)}
+                style={styles.eyeButton}
+                activeOpacity={0.7}
+              >
+                {showPasskey ? <EyeOff color="#94a3b8" size={20} /> : <Eye color="#94a3b8" size={20} />}
+              </TouchableOpacity>
+            </View>
             <Text style={styles.helperText}>
               Your family's coordinates are encrypted client-side using this key before uploading. To view each other's live coordinates, all family members must use the EXACT SAME key!
             </Text>
@@ -236,6 +250,8 @@ const styles = StyleSheet.create({
   passwordInput: {
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     letterSpacing: 0.5,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   helperText: {
     color: '#64748b',
@@ -280,5 +296,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 6,
+  },
+  eyeButton: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

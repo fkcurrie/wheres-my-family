@@ -303,7 +303,7 @@ export default function MapViewContainer({
             activeOpacity={0.7}
             accessibilityLabel="Center on my location"
           >
-            <Navigation color="#fff" size={16} fill="#fff" />
+            <Navigation color="#fff" size={20} fill="#fff" />
           </TouchableOpacity>
         )}
       </View>
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   },
   mapCanvas: {
     width: '100%',
-    height: 240,
+    height: 300,
     backgroundColor: '#0f172a',
     borderRadius: 12,
     justifyContent: 'center',
@@ -366,9 +366,9 @@ const styles = StyleSheet.create({
     bottom: 12,
     right: 12,
     backgroundColor: 'rgba(30, 41, 59, 0.9)', // Slate 800 semi-transparent
-    borderRadius: 18,
-    width: 36,
-    height: 36,
+    borderRadius: 24,
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,

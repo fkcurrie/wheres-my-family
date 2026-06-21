@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Battery as BatteryIcon } from 'lucide-react-native';
+import { Battery, BatteryLow, BatteryMedium, BatteryCharging } from 'lucide-react-native';
 import { FamilyMember } from '../types';
 
 interface FamilyListProps {
@@ -11,6 +11,7 @@ interface FamilyListProps {
   handleNudgeMember: (member: FamilyMember) => void;
   handlePingMember: (member: FamilyMember) => void;
   handleDeleteMember: (member: FamilyMember) => void;
+  onMemberPress?: (member: FamilyMember) => void;
 }
 
 // --- Platform SVG Logos ---
@@ -48,98 +49,110 @@ const FamilyMemberCard = React.memo(
     handleNudgeMember,
     handlePingMember,
     handleDeleteMember,
+    onMemberPress,
   }: {
     member: FamilyMember;
     userName: string | null;
     handleNudgeMember: (member: FamilyMember) => void;
     handlePingMember: (member: FamilyMember) => void;
     handleDeleteMember: (member: FamilyMember) => void;
+    onMemberPress?: (member: FamilyMember) => void;
   }) => {
     return (
       <View style={styles.familyCard}>
-        <View style={styles.rowBetween}>
-          <View style={styles.familyMemberInfo}>
-            <View style={[styles.colorIndicator, { backgroundColor: member.color }]} />
-            <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.familyName}>
-                  {member.name === userName ? `${member.name} (You)` : member.name}
-                </Text>
-                {getMemberPlatform(member, userName) === 'android' ? (
-                  <AndroidLogo size={13} color="#3ddc84" />
-                ) : (
-                  <AppleLogo size={13} color="#94a3b8" />
-                )}
-                {member.weatherTemp !== undefined && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onMemberPress?.(member)}
+        >
+          <View style={styles.rowBetween}>
+            <View style={styles.familyMemberInfo}>
+              <View style={[styles.colorIndicator, { backgroundColor: member.color }]} />
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.familyName}>
+                    {member.name === userName ? `${member.name} (You)` : member.name}
+                  </Text>
+                  {getMemberPlatform(member, userName) === 'android' ? (
+                    <AndroidLogo size={13} color="#3ddc84" />
+                  ) : (
+                    <AppleLogo size={13} color="#94a3b8" />
+                  )}
+                  {member.weatherTemp !== undefined && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: '#0f172a',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 12,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12 }}>{member.weatherEmoji}</Text>
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+                        {member.weatherTemp}°C
+                      </Text>
+                    </View>
+                  )}
+                  {member.weatherIsSevere && (
+                    <View
+                      style={{
+                        backgroundColor: '#ef4444',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 12,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>
+                        ⚠️ SEVERE
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                   <View
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      backgroundColor: '#0f172a',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 12,
-                      gap: 4,
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: member.deviceStatus === 'Active' ? '#10b981' : '#64748b',
                     }}
-                  >
-                    <Text style={{ fontSize: 12 }}>{member.weatherEmoji}</Text>
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
-                      {member.weatherTemp}°C
-                    </Text>
-                  </View>
-                )}
-                {member.weatherIsSevere && (
-                  <View
+                  />
+                  <Text
                     style={{
-                      backgroundColor: '#ef4444',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 12,
+                      color: member.deviceStatus === 'Active' ? '#34d399' : '#94a3b8',
+                      fontSize: 11,
+                      fontWeight: '700',
                     }}
                   >
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>
-                      ⚠️ SEVERE
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: member.deviceStatus === 'Active' ? '#10b981' : '#64748b',
-                  }}
-                />
-                <Text
-                  style={{
-                    color: member.deviceStatus === 'Active' ? '#34d399' : '#94a3b8',
-                    fontSize: 11,
-                    fontWeight: '700',
-                  }}
-                >
-                  {member.deviceStatus || 'Active'}
-                </Text>
-                <Text style={{ color: '#475569', fontSize: 11 }}>•</Text>
-                <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
+                    {member.deviceStatus || 'Active'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 11 }}>•</Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
+                </View>
               </View>
             </View>
+            <View style={styles.familyRightSide}>
+              <Text style={styles.familyDistance}>{member.distance}</Text>
+              <Text style={styles.familyLastSeen}>Seen {member.lastSeen}</Text>
+            </View>
           </View>
-          <View style={styles.familyRightSide}>
-            <Text style={styles.familyDistance}>{member.distance}</Text>
-            <Text style={styles.familyLastSeen}>Seen {member.lastSeen}</Text>
-          </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.familyDivider} />
 
         <View style={styles.familyFooter}>
           <View style={styles.batteryRow}>
-            <BatteryIcon
-              color={member.battery < 20 ? '#ef4444' : member.charging ? '#10b981' : '#9ca3af'}
-              size={16}
-            />
+            {member.charging ? (
+              <BatteryCharging color="#10b981" size={16} />
+            ) : member.battery < 20 ? (
+              <BatteryLow color="#ef4444" size={16} />
+            ) : member.battery < 60 ? (
+              <BatteryMedium color="#94a3b8" size={16} />
+            ) : (
+              <Battery color="#94a3b8" size={16} />
+            )}
             <Text style={[styles.batteryText, member.battery < 20 && styles.lowBatteryText]}>
               {member.battery}% {member.charging ? '(Charging)' : ''}
             </Text>
@@ -159,12 +172,14 @@ const FamilyMemberCard = React.memo(
             >
               <Text style={styles.pingText}>Ping Device</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.pingButton, { backgroundColor: '#ef4444' }]}
-              onPress={() => handleDeleteMember(member)}
-            >
-              <Text style={styles.pingText}>🗑️ Remove</Text>
-            </TouchableOpacity>
+            {member.name !== userName && (
+              <TouchableOpacity
+                style={[styles.pingButton, { backgroundColor: '#ef4444' }]}
+                onPress={() => handleDeleteMember(member)}
+              >
+                <Text style={styles.pingText}>🗑️ Remove</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -197,6 +212,7 @@ export default function FamilyList({
   handleNudgeMember,
   handlePingMember,
   handleDeleteMember,
+  onMemberPress,
 }: FamilyListProps) {
   return (
     <View style={{ marginTop: 10 }}>
@@ -217,6 +233,7 @@ export default function FamilyList({
           handleNudgeMember={handleNudgeMember}
           handlePingMember={handlePingMember}
           handleDeleteMember={handleDeleteMember}
+          onMemberPress={onMemberPress}
         />
       ))}
     </View>
