@@ -15,6 +15,15 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // 1. Authenticate Request
+  const MANTLE_KEY = process.env.MANTLE_KEY || '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+  const clientKey = req.headers['x-mantle-key'] || req.headers['X-Mantle-Key'];
+
+  if (clientKey !== MANTLE_KEY) {
+    console.warn(`[Unauthorized Access Attempt]: Key ${clientKey}`);
+    return res.status(401).json({ error: 'Unauthorized: Invalid X-Mantle-Key' });
+  }
+
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
   const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -60,6 +69,18 @@ export default async function handler(req, res) {
     return false;
   };
 
+  // 2. Helper to sanitize keys from path traversal and prototype pollution
+  const sanitizeKey = (key) => {
+    if (typeof key !== 'string') return '';
+    // Remove slashes, dots, and backslashes
+    const clean = key.replace(/[\/\\.]/g, '').trim();
+    // Block explicit prototype pollution keywords
+    if (clean === '__proto__' || clean === 'constructor' || clean === 'prototype') {
+      return '';
+    }
+    return clean;
+  };
+
   try {
     if (req.method === 'GET') {
       const data = await getSovereignData();
@@ -74,14 +95,20 @@ export default async function handler(req, res) {
 
       const currentData = await getSovereignData();
 
-      // Deep merge payload
+      // Deep merge payload with key sanitization
       const mergedData = { ...currentData };
       for (const key of Object.keys(updatePayload)) {
+        const cleanKey = sanitizeKey(key);
+        if (!cleanKey) {
+          console.warn(`[Sovereign API Path Traversal/Prototype Injection Blocked]: Bypassing unsafe key: "${key}"`);
+          continue;
+        }
+
         if (updatePayload[key] === null) {
-          delete mergedData[key]; // Retire/delete member if null is passed
+          delete mergedData[cleanKey]; // Retire/delete member if null is passed
         } else {
-          mergedData[key] = {
-            ...(mergedData[key] || {}),
+          mergedData[cleanKey] = {
+            ...(mergedData[cleanKey] || {}),
             ...updatePayload[key],
           };
         }

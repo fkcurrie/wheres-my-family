@@ -4,6 +4,18 @@ const functions = require('@google-cloud/functions-framework');
 const db = new Firestore();
 const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
 
+const sanitizeKey = (key) => {
+  if (typeof key !== 'string') return '';
+  // Remove slashes, dots, and backslashes
+  const clean = key.replace(/[\/\\.]/g, '').trim();
+  // Block explicit prototype pollution keywords
+  if (clean === '__proto__' || clean === 'constructor' || clean === 'prototype') {
+    return '';
+  }
+  return clean;
+};
+
+
 functions.http('locations', async (req, res) => {
   // CORS Headers
   res.set('Access-Control-Allow-Origin', '*');
@@ -85,9 +97,9 @@ functions.http('locations', async (req, res) => {
       // Perform Batch updates / deletes with key path traversal sanitization
       const batch = db.batch();
       for (const key of Object.keys(updatePayload)) {
-        const cleanKey = key.trim();
+        const cleanKey = sanitizeKey(key);
         // Prevent path traversal injection
-        if (!cleanKey || cleanKey.includes('/') || cleanKey.includes('.') || cleanKey.includes('\\')) {
+        if (!cleanKey) {
           console.warn(`[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`);
           continue;
         }
