@@ -85,6 +85,26 @@ graph TD
 
 ---
 
+## 📚 Detailed Guides & Architecture
+
+To help you or other developers understand, run, or replicate this entire ecosystem, we have compiled comprehensive documentation in the [docs](file:///g:/My%20Drive/AGY-Projects/android-test/wheres-my-family/docs) directory:
+
+1. 🚀 [**Getting Started & Developer Guide**](file:///g:/My%20Drive/AGY-Projects/android-test/wheres-my-family/docs/getting-started.md)
+   - Detailed client-side architecture and interactive telemetry flows (Onboarding, GPS, Speed-Adaptive Rates, Battery Icons).
+   - E2EE AES-256-CBC and XOR legacy fallback mechanics.
+   - Initial local Metro bundler and emulator setup.
+2. ☁️ [**Sovereign Backend & Self-Host Guide**](file:///g:/My%20Drive/AGY-Projects/android-test/wheres-my-family/docs/backend-setup.md)
+   - Deep dive into our stateless GCP Cloud Functions 2nd Gen API and Firestore database configurations.
+   - Step-by-step instructions to replicate and host the backend in your own GCP project under the $0/month free tier.
+   - Serverless API security rules, key sanitization, and prototype pollution guards.
+3. 📦 [**Build, Release & CI/CD Pipelines**](file:///g:/My%20Drive/AGY-Projects/android-test/wheres-my-family/docs/build-and-release.md)
+   - Step-by-step guidelines for local Gradle (`.aab`) and manual Xcode (`.ipa`) builds.
+   - Comprehensive walk-through of our automated GitHub Actions workflow files (`android-build.yml` and `ios-build.yml`).
+   - Essential repository secrets and Xcode 26 simulator daemon priming configurations.
+   - Guidelines for App Store "What's New" release notes updates.
+
+---
+
 ## 📦 Developer Guide
 
 ### Prerequisites
