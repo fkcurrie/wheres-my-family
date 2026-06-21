@@ -48,3 +48,16 @@ Use this skill when auditing source files, changing API integrations, modifying 
    - **🟢 Low/Info Severity:** Informational best practices (e.g., code stylistic patterns, minor dependency updates).
 3. Draft a structured, prioritized "Security Remediation Roadmap" in your audit report that guides the user on precisely how to patch the issues securely.
 
+---
+
+## 🔧 Step 5: Proactive Remediation & Self-Healing Patches
+
+1. If the environment supports write tools and the user explicitly requests or allows active remediation:
+   - For **🔴 Critical/High Severity** issues (like hardcoded keys): Immediately remove the secret, transfer it to secure environment configurations, and write the necessary server/client API integration patches.
+   - For **🟡 Moderate Severity** issues (like path traversals): Rewrite the vulnerable parsing routines to include sanitization and validation on-the-fly.
+2. After writing the patches, run the standard compilation and validation checks:
+   - Run typecheck: `powershell -ExecutionPolicy Bypass -Command "node_modules\typescript\bin\tsc --noEmit"`
+   - Run lint: `powershell -ExecutionPolicy Bypass -Command "npm run lint"`
+3. If verification succeeds, stage and commit the patches to the master branch with a descriptive commit message (e.g., `security: sanitize Firestore document key paths`), and push to trigger clean release builds.
+
+
