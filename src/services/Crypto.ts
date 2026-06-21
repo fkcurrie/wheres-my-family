@@ -85,7 +85,7 @@ export const decryptString = (ciphertext: string, key?: string): string => {
     if (decrypted) {
       return decrypted;
     }
-  } catch (err) {
+  } catch {
     // Suppress and fall through to legacy XOR fallback
   }
 

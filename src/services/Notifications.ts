@@ -100,7 +100,9 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
             'Ping Response (BG)',
             { pingRequested: false }
           );
-          await addDiagnosticLog(`[Background Ping] Successfully processed ping and pushed location.`);
+          await addDiagnosticLog(
+            `[Background Ping] Successfully processed ping and pushed location.`
+          );
         } catch (err: any) {
           console.warn('[Background Ping Response Error]:', err);
           await addDiagnosticLog(`[Background Ping Error] Failed: ${err.message || String(err)}`);

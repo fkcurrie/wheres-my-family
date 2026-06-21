@@ -69,7 +69,10 @@ export default function SettingsModal({
         await onKeyChange();
       }
 
-      Alert.alert('Settings Saved', 'Your system settings and E2EE configurations have been updated.');
+      Alert.alert(
+        'Settings Saved',
+        'Your system settings and E2EE configurations have been updated.'
+      );
       onClose();
     } catch (err: any) {
       Alert.alert('Error Saving Settings', err.message || String(err));
@@ -127,7 +130,8 @@ export default function SettingsModal({
                   <Text style={styles.sectionLabel}>Background Location Tracking</Text>
                 </View>
                 <Text style={styles.toggleDescription}>
-                  Allows tracking when the phone is locked or app is in the background. Keep your family updated continuously.
+                  Allows tracking when the phone is locked or app is in the background. Keep your
+                  family updated continuously.
                 </Text>
               </View>
               <Switch
@@ -160,11 +164,16 @@ export default function SettingsModal({
                 style={styles.eyeButton}
                 activeOpacity={0.7}
               >
-                {showPasskey ? <EyeOff color="#94a3b8" size={20} /> : <Eye color="#94a3b8" size={20} />}
+                {showPasskey ? (
+                  <EyeOff color="#94a3b8" size={20} />
+                ) : (
+                  <Eye color="#94a3b8" size={20} />
+                )}
               </TouchableOpacity>
             </View>
             <Text style={styles.helperText}>
-              Your family's coordinates are encrypted client-side using this key before uploading. To view each other's live coordinates, all family members must use the EXACT SAME key!
+              Your family's coordinates are encrypted client-side using this key before uploading.
+              To view each other's live coordinates, all family members must use the EXACT SAME key!
             </Text>
 
             <TouchableOpacity

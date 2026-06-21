@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Battery, BatteryLow, BatteryMedium, BatteryCharging } from 'lucide-react-native';
 import { FamilyMember } from '../types';
@@ -60,10 +60,7 @@ const FamilyMemberCard = React.memo(
   }) => {
     return (
       <View style={styles.familyCard}>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => onMemberPress?.(member)}
-        >
+        <TouchableOpacity activeOpacity={0.7} onPress={() => onMemberPress?.(member)}>
           <View style={styles.rowBetween}>
             <View style={styles.familyMemberInfo}>
               <View style={[styles.colorIndicator, { backgroundColor: member.color }]} />
@@ -166,10 +163,7 @@ const FamilyMemberCard = React.memo(
                 <Text style={styles.pingText}>📳 Nudge</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.pingButton}
-              onPress={() => handlePingMember(member)}
-            >
+            <TouchableOpacity style={styles.pingButton} onPress={() => handlePingMember(member)}>
               <Text style={styles.pingText}>Ping Device</Text>
             </TouchableOpacity>
             {member.name !== userName && (
@@ -204,6 +198,8 @@ const FamilyMemberCard = React.memo(
     );
   }
 );
+
+FamilyMemberCard.displayName = 'FamilyMemberCard';
 
 export default function FamilyList({
   familyMembers,

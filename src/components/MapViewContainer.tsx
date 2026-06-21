@@ -146,6 +146,8 @@ const MemoizedMarker = React.memo(
   }
 );
 
+MemoizedMarker.displayName = 'MemoizedMarker';
+
 export default function MapViewContainer({
   userLocation,
   familyMembers,

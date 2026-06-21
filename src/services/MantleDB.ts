@@ -237,7 +237,6 @@ export const clearNudgeState = async (savedName: string, currentUserData: any) =
   });
 };
 
-
 /**
  * Trigger / request an immediate high-accuracy GPS update for a family member
  */

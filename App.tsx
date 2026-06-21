@@ -17,7 +17,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ShieldAlert, Share2, RefreshCw, Info, MessageSquare, Settings } from 'lucide-react-native';
+import { ShieldAlert, Share2, RefreshCw, MessageSquare, Settings } from 'lucide-react-native';
 
 // --- Modular Service & Component Imports ---
 import { addDiagnosticLog } from './src/services/Logger';
@@ -193,7 +193,7 @@ export default function App() {
   const [snappedTrails, setSnappedTrails] = useState<Record<string, TrailCoord[]>>({});
 
   const [showTrails, setShowTrails] = useState<boolean>(false);
-  const [panicActive, setPanicActive] = useState<boolean>(false);
+  const [panicActive] = useState<boolean>(false);
   const [updatingLocation, setUpdatingLocation] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
   const [showTriageConsole, setShowTriageConsole] = useState<boolean>(false);
@@ -267,7 +267,9 @@ export default function App() {
 
         // Direct local ping foreground handling
         if (userName && data[userName] && data[userName].pingRequested === true) {
-          await addDiagnosticLog(`[Ping] RECEIVED a ping request in foreground! Responding immediately.`);
+          await addDiagnosticLog(
+            '[Ping] RECEIVED a ping request in foreground! Responding immediately.'
+          );
           try {
             const loc = await Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.High,
@@ -602,7 +604,7 @@ export default function App() {
         `Successfully sent a high-importance nudge request to ${member.name}'s device.`
       );
       await addDiagnosticLog(`[Nudge Outbound] Nudged member: "${member.name}"`);
-    } catch (err) {
+    } catch {
       Alert.alert('Nudge Failed', 'Failed to dispatch notification nudge.');
     }
   };
@@ -611,12 +613,9 @@ export default function App() {
   const handlePingMember = async (member: FamilyMember) => {
     try {
       await requestPingMember(member);
-      Alert.alert(
-        '📍 Ping Dispatched',
-        `Requested immediate location update from ${member.name}.`
-      );
+      Alert.alert('📍 Ping Dispatched', `Requested immediate location update from ${member.name}.`);
       await addDiagnosticLog(`[Ping Outbound] Pinged member: "${member.name}"`);
-    } catch (err) {
+    } catch {
       Alert.alert('Ping Failed', 'Failed to dispatch immediate GPS ping.');
     }
   };
@@ -637,7 +636,7 @@ export default function App() {
               await addDiagnosticLog(`[Admin] Deleted retired member: "${member.name}"`);
               await fetchFamilyLocations();
               Alert.alert('Device Removed', `Successfully retired "${member.name}".`);
-            } catch (err) {
+            } catch {
               Alert.alert('Error', 'Could not remove device.');
             }
           },
