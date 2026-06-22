@@ -141,10 +141,11 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
             body: 'Someone in your family is nudging you to check in!',
             sound: true,
             priority: Notifications.AndroidNotificationPriority.HIGH,
-            channelId: 'nudges',
             interruptionLevel: 'active', // Respect Focus & DND, show immediately on lock screen (iOS)
           },
-          trigger: null,
+          trigger: {
+            channelId: 'nudges',
+          } as any,
         });
 
         // Clear the nudgeRequested state in DB immediately
