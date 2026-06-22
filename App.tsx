@@ -56,6 +56,39 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK_NAME, async () => {
   try {
     const savedName = globalStateRef.userName || (await AsyncStorage.getItem('user_name'));
     if (savedName) {
+      await addDiagnosticLog(`[Background Fetch] Periodic check-in triggered for user: "${savedName}"`);
+
+      // 1. Force location update when background fetch runs
+      try {
+        const { status: backStatus } = await Location.getBackgroundPermissionsAsync();
+        if (backStatus === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (loc && loc.coords) {
+            await addDiagnosticLog(
+              `[Background Fetch GPS] Acquired position. Accuracy: ${loc.coords.accuracy?.toFixed(1) ?? 'N/A'}m. Publishing.`
+            );
+            await publishLocation(
+              savedName,
+              loc.coords.latitude,
+              loc.coords.longitude,
+              'Stationary Check-in (BG)',
+              {},
+              loc.timestamp
+            );
+          }
+        } else {
+          await addDiagnosticLog(`[Background Fetch Warning] Background GPS permission not granted.`);
+        }
+      } catch (locErr: any) {
+        console.warn('[Background Fetch Location Sync Error]:', locErr);
+        await addDiagnosticLog(
+          `[Background Fetch GPS Error] Failed to fetch position: ${locErr.message || String(locErr)}`
+        );
+      }
+
+      // 2. Poll/Process background nudges & pings
       const nudgeTriggered = await checkAndHandleNudge(savedName);
       return nudgeTriggered
         ? BackgroundFetch.BackgroundFetchResult.NewData
@@ -228,6 +261,11 @@ export default function App() {
         setIsBackgroundTracking(isRegistered);
         if (isRegistered) {
           setPermissionStatus('Granted (Background Active)');
+          // Ensure background fetch is also registered on startup
+          const isFetchRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK_NAME);
+          if (!isFetchRegistered) {
+            await registerBackgroundFetchTask();
+          }
         }
 
         const savedName = await AsyncStorage.getItem('user_name');
@@ -487,11 +525,11 @@ export default function App() {
   const registerBackgroundFetchTask = async () => {
     try {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK_NAME, {
-        minimumInterval: 15 * 60,
+        minimumInterval: 5 * 60,
         stopOnTerminate: false,
         startOnBoot: true,
       });
-      await addDiagnosticLog(`[Background Fetch] Registered periodic nudge check (15m).`);
+      await addDiagnosticLog(`[Background Fetch] Registered periodic nudge & location check (5m).`);
     } catch (err: any) {
       await addDiagnosticLog(`[Background Fetch Error] Registration failed: ${err.message}`);
     }
@@ -832,7 +870,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.17{'\n'}
+          Where's my family!! • v1.0.18{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

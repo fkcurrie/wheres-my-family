@@ -89,12 +89,12 @@ export const publishLocation = async (
     const now = Date.now();
     const isForced = ['App Started', 'Manual Refresh', 'Onboarding Completed'].includes(status);
 
-    // Throttling: Skip publishing if stationary (< 50 meters / ~0.05 km) and updated within last 15 minutes
+    // Throttling: Skip publishing if stationary (< 50 meters / ~0.05 km) and updated within last 5 minutes
     if (
       !isForced &&
       lastPublishedLat !== null &&
       lastPublishedLng !== null &&
-      now - lastPublishedTime < 15 * 60 * 1000
+      now - lastPublishedTime < 5 * 60 * 1000
     ) {
       const dist = getDistanceInKm(latitude, longitude, lastPublishedLat, lastPublishedLng);
       if (dist < 0.05) {
