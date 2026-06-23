@@ -56,7 +56,9 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK_NAME, async () => {
   try {
     const savedName = globalStateRef.userName || (await AsyncStorage.getItem('user_name'));
     if (savedName) {
-      await addDiagnosticLog(`[Background Fetch] Periodic check-in triggered for user: "${savedName}"`);
+      await addDiagnosticLog(
+        `[Background Fetch] Periodic check-in triggered for user: "${savedName}"`
+      );
 
       // 1. Force location update when background fetch runs
       try {
@@ -79,7 +81,9 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK_NAME, async () => {
             );
           }
         } else {
-          await addDiagnosticLog(`[Background Fetch Warning] Background GPS permission not granted.`);
+          await addDiagnosticLog(
+            `[Background Fetch Warning] Background GPS permission not granted.`
+          );
         }
       } catch (locErr: any) {
         console.warn('[Background Fetch Location Sync Error]:', locErr);
@@ -262,7 +266,8 @@ export default function App() {
         if (isRegistered) {
           setPermissionStatus('Granted (Background Active)');
           // Ensure background fetch is also registered on startup
-          const isFetchRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK_NAME);
+          const isFetchRegistered =
+            await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK_NAME);
           if (!isFetchRegistered) {
             await registerBackgroundFetchTask();
           }
