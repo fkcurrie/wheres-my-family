@@ -115,6 +115,7 @@ export const fetchMantleDB = async () => {
             m.trail = decompressTrail(decTrail);
           }
         }
+        m.source = m.source || 'HTTPS';
       }
     }
   }
@@ -193,6 +194,7 @@ export const publishLocation = async (
         latitude: 46.8182,
         longitude: 8.2275,
         status: 'Encrypted',
+        source: 'HTTPS',
 
         // SECURE ENCRYPTED VALUES (Ensuring zero-knowledge local client data residency)
         latEnc: encryptValue(latitude),
@@ -260,6 +262,7 @@ export const publishLocation = async (
           latitude: 46.8182,
           longitude: 8.2275,
           status: 'Encrypted',
+          source: 'HTTPS',
           latEnc: encryptValue(latitude),
           lngEnc: encryptValue(longitude),
           statusEnc: encryptValue(status),
@@ -285,6 +288,55 @@ export const publishLocation = async (
     } catch (queueErr) {
       console.error('[Offline Queue Store Error]:', queueErr);
     }
+  }
+};
+
+/**
+ * Sync / Publish SMS-imported location to MantleDB
+ */
+export const publishSMSLocation = async (
+  memberName: string,
+  latitude: number,
+  longitude: number,
+  battery: number,
+  status: string = 'SOS',
+  timestamp: number = Date.now()
+) => {
+  try {
+    const payload = {
+      [memberName]: {
+        name: memberName,
+        latitude: 46.8182,
+        longitude: 8.2275,
+        status: 'Encrypted',
+        source: 'SMS',
+        latEnc: encryptValue(latitude),
+        lngEnc: encryptValue(longitude),
+        statusEnc: encryptValue(status),
+        battery: battery,
+        charging: false,
+        deviceStatus: 'Offline',
+        updatedAt: timestamp,
+        platform: 'unknown',
+      },
+    };
+
+    await fetch(MANTLE_DB_URL, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Mantle-Key': MANTLE_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log(`[SMS Sync]: Successfully published SMS location for ${memberName} to MantleDB.`);
+    await addDiagnosticLog(`[SMS Sync] Propagated SMS coordinates for ${memberName} to MantleDB.`);
+  } catch (err) {
+    console.error('[SMS Sync Error]: Failed to publish SMS location:', err);
+    await addDiagnosticLog(
+      `[SMS Sync Error] Failed: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 };
 

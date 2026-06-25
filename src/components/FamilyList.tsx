@@ -74,6 +74,22 @@ const FamilyMemberCard = React.memo(
                   ) : (
                     <AppleLogo size={13} color="#94a3b8" />
                   )}
+                  {member.source === 'SMS' && (
+                    <View
+                      style={{
+                        backgroundColor: '#064e3b',
+                        borderColor: '#10b981',
+                        borderWidth: 1,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 12,
+                      }}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#34d399' }}>
+                        🛰️ SMS FALLBACK
+                      </Text>
+                    </View>
+                  )}
                   {member.weatherTemp !== undefined && (
                     <View
                       style={{
@@ -194,6 +210,7 @@ const FamilyMemberCard = React.memo(
       prev.member.weatherIsSevere === next.member.weatherIsSevere &&
       prev.member.nudgeRequested === next.member.nudgeRequested &&
       prev.member.pingRequested === next.member.pingRequested &&
+      prev.member.source === next.member.source &&
       prev.userName === next.userName
     );
   }

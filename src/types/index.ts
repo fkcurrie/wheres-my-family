@@ -35,4 +35,5 @@ export interface FamilyMember {
   platform?: string;
   latOffset?: number;
   lngOffset?: number;
+  source?: 'HTTPS' | 'SMS';
 }

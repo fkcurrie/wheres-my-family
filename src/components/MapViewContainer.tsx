@@ -231,7 +231,7 @@ export default function MapViewContainer({
                   key={member.id}
                   coordinate={{ latitude: memberLat, longitude: memberLng }}
                   title={member.name}
-                  description={`${member.status} (${member.distance})`}
+                  description={`${member.source === 'SMS' ? '🛰️ [SMS] ' : ''}${member.status} (${member.distance})`}
                   pinColor={member.color}
                 />
               );

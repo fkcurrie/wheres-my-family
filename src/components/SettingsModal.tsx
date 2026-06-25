@@ -12,7 +12,8 @@ import {
   Switch,
   Alert,
 } from 'react-native';
-import { X, Settings, User, Lock, Map, Eye, EyeOff } from 'lucide-react-native';
+import { X, Settings, User, Lock, Map, Eye, EyeOff, Phone } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getActiveFamilyKey, setCustomFamilyKey } from '../services/Crypto';
 import { addDiagnosticLog } from '../services/Logger';
 
@@ -39,12 +40,19 @@ export default function SettingsModal({
   const [familyKey, setFamilyKey] = useState<string>('');
   const [showPasskey, setShowPasskey] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
+  const [emergencyContacts, setEmergencyContacts] = useState<string>('');
 
   // Load the active family key on open
   useEffect(() => {
     if (visible) {
       setName(currentName);
       setFamilyKey(getActiveFamilyKey());
+      // Load contacts from AsyncStorage
+      AsyncStorage.getItem('family_recipient_numbers')
+        .then((val) => {
+          if (val) setEmergencyContacts(val);
+        })
+        .catch((err) => console.warn('[SettingsModal] Error loading contacts:', err));
     }
   }, [visible, currentName]);
 
@@ -68,6 +76,10 @@ export default function SettingsModal({
         await addDiagnosticLog(`[Crypto] Encryption key changed by user.`);
         await onKeyChange();
       }
+
+      // 3. Save emergency contacts if changed
+      await AsyncStorage.setItem('family_recipient_numbers', emergencyContacts.trim());
+      await addDiagnosticLog(`[Settings] Emergency contacts updated by user.`);
 
       Alert.alert(
         'Settings Saved',
@@ -141,6 +153,28 @@ export default function SettingsModal({
                 thumbColor={isBackgroundTracking ? '#34d399' : '#475569'}
               />
             </View>
+
+            {/* Emergency SMS Contacts Section */}
+            <View style={styles.divider} />
+            <View style={styles.sectionHeader}>
+              <Phone color="#ef4444" size={16} style={{ marginRight: 6 }} />
+              <Text style={styles.sectionLabel}>Emergency SMS Contacts</Text>
+            </View>
+            <TextInput
+              style={styles.textInput}
+              value={emergencyContacts}
+              onChangeText={setEmergencyContacts}
+              placeholder="e.g., +15550199, +15550198"
+              placeholderTextColor="#475569"
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+            <Text style={styles.helperText}>
+              Enter comma-separated phone numbers of family members. These will be pre-populated
+              when launching the offline E2EE SOS SMS backup tool.
+            </Text>
 
             {/* Encryption Key Section */}
             <View style={styles.divider} />
