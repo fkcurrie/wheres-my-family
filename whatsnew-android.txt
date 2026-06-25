@@ -1,5 +1,6 @@
-Where's my family!! • Version 1.0.23 (Build 23) Release Notes:
+Where's my family!! • Version 1.0.25 (Build 25) Release Notes:
 
-- 🩺 Pre-Build SDK Diagnostics Integration: Integrated `expo-doctor` health scans directly into local orchestrators and our GitHub Actions CI/CD pipelines to guarantee dependency and SDK version alignment before native compilation.
-- 🐛 Crash Hotfix: Corrected a native module classloading crash on Android startup by aligning `expo-secure-store` and `expo-sqlite` versions with the core Expo SDK 54 platform specifications.
-- 📦 Dependency Hardening: Pre-installed `expo-doctor` inside package configurations to eliminate interactive npm prompts during automated health check runs.
+- 🛰️ Offline E2EE SOS SMS Fallback: Added a robust offline fallback mode. Users can package, encrypt (client-side AES-256-CBC), and share their exact coordinates and battery level to pre-configured family contacts over standard SMS with zero internet connectivity.
+- 📥 Client-Side Decryptor: Introduced an in-app E2EE SMS parser. Copy and paste an SMS payload received from an offline family member to decrypt their location locally and synchronize it with the rest of the family.
+- 🎨 Premium Badging: Added sleek "🛰️ SMS Fallback" indicators to cards and custom map markers.
+- 🍏 iOS App Store Integration: Updated the TestFlight invitation and share messaging to include the real installation join link code.
