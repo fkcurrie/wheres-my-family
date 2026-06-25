@@ -12,10 +12,7 @@
       "appleTeamId": "LSV2MNUNZ8",
       "buildNumber": "23",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ],
+        "UIBackgroundModes": ["location", "fetch"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },

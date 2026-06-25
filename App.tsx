@@ -33,17 +33,21 @@ import {
 import { addDiagnosticLog } from './src/services/Logger';
 import { checkAndHandleNudge, requestNotificationPermissions } from './src/services/Notifications';
 import { cleanAndSortTrail, fetchSnappedTrail, updateAndGetLocalTrail } from './src/services/OSRM';
+import * as SMS from 'expo-sms';
 import {
   fetchMantleDB,
   publishLocation,
+  publishSMSLocation,
   requestNudgeMember,
   requestPingMember,
   deleteMember,
   clearNudgeState,
+  getRealBatteryAndActivity,
 } from './src/services/MantleDB';
 import { getDistanceInKm } from './src/services/Helpers';
 import { FamilyMember, TrailCoord } from './src/types';
 import { initQueueDatabase } from './src/services/SqliteQueue';
+import { packageLocationToSMS } from './src/services/SMSPackager';
 
 import Onboarding from './src/components/Onboarding';
 import FamilyList from './src/components/FamilyList';
@@ -51,6 +55,7 @@ import MapViewContainer from './src/components/MapViewContainer';
 import LogTerminal from './src/components/LogTerminal';
 import FeedbackModal from './src/components/FeedbackModal';
 import SettingsModal from './src/components/SettingsModal';
+import ImportSMSModal from './src/components/ImportSMSModal';
 import { loadCustomFamilyKey } from './src/services/Crypto';
 
 // --- Background Task Names ---
@@ -379,6 +384,7 @@ export default function App() {
   const [showTriageConsole, setShowTriageConsole] = useState<boolean>(false);
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
+  const [importSMSVisible, setImportSMSVisible] = useState<boolean>(false);
 
   // --- Remote Configuration & Dynamic Announcement States ---
   const [globalAnnouncement, setGlobalAnnouncement] = useState<{
@@ -897,6 +903,127 @@ export default function App() {
     }
   };
 
+  // Package Location & Send via Native SMS Sheet (E2EE Fallback)
+  const handleSendSMSBackup = async () => {
+    try {
+      await addDiagnosticLog('[SMS Backup] Initiating offline SOS SMS backup...');
+
+      // 1. Get current location (even cached or low accuracy, just try to get something!)
+      let lat = 46.8182;
+      let lng = 8.2275;
+      let batteryLevel = 100;
+
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        lat = loc.coords.latitude;
+        lng = loc.coords.longitude;
+      } catch (e) {
+        console.warn('Could not get fresh location for SMS, using cached location:', e);
+        if (userLocation) {
+          lat = userLocation.coords.latitude;
+          lng = userLocation.coords.longitude;
+        }
+      }
+
+      // 2. Get battery level
+      try {
+        const info = await getRealBatteryAndActivity();
+        batteryLevel = info.batteryLevel;
+      } catch {}
+
+      // 3. Package to E2EE payload
+      const payload = packageLocationToSMS(lat, lng, batteryLevel, 'SOS');
+
+      // 4. Load recipient numbers from AsyncStorage
+      const contactsStr = await AsyncStorage.getItem('family_recipient_numbers');
+      const recipients = contactsStr
+        ? contactsStr
+            .split(',')
+            .map((num) => num.trim())
+            .filter(Boolean)
+        : [];
+
+      if (recipients.length === 0) {
+        Alert.alert(
+          'No Contacts Configured',
+          'You have not saved any Emergency SMS Contacts in Settings. We will launch the SMS sheet, but you must enter the phone numbers manually.',
+          [
+            {
+              text: 'Launch SMS Sheet',
+              onPress: async () => {
+                await SMS.sendSMSAsync([], payload);
+                await addDiagnosticLog(
+                  '[SMS Backup] Launched SMS sheet without predefined recipients.'
+                );
+              },
+            },
+            {
+              text: 'Cancel & Configure',
+              style: 'cancel',
+              onPress: () => {
+                setSettingsVisible(true);
+              },
+            },
+          ]
+        );
+      } else {
+        const isSmsAvailable = await SMS.isAvailableAsync();
+        if (!isSmsAvailable) {
+          Alert.alert('SMS Unavailable', 'SMS services are not available on this device.');
+          return;
+        }
+
+        await SMS.sendSMSAsync(recipients, payload);
+        await addDiagnosticLog(
+          `[SMS Backup] Launched SMS sheet with prefilled recipients: ${recipients.join(', ')}`
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('SMS Error', err.message || String(err));
+      await addDiagnosticLog(`[SMS Backup Error] Failed: ${err.message || String(err)}`);
+    }
+  };
+
+  // Handle client-side decryption success for manual SMS import
+  const handleImportSMSSuccess = async (
+    memberName: string,
+    parsed: {
+      latitude: number;
+      longitude: number;
+      battery: number;
+      updatedAt: number;
+      status: string;
+    }
+  ) => {
+    try {
+      await addDiagnosticLog(
+        `[SMS Import] Decrypted and assigning SMS location to ${memberName}...`
+      );
+
+      // 1. Publish to MantleDB so everyone in the family sees it
+      await publishSMSLocation(
+        memberName,
+        parsed.latitude,
+        parsed.longitude,
+        parsed.battery,
+        parsed.status,
+        parsed.updatedAt
+      );
+
+      // 2. Refresh family locations locally to reflect changes immediately
+      await fetchFamilyLocations();
+
+      Alert.alert(
+        'Location Imported',
+        `Successfully decrypted and updated ${memberName}'s location from SMS backup and synchronized it to the family server.`
+      );
+    } catch (err: any) {
+      Alert.alert('Import Sync Error', err.message || String(err));
+    }
+  };
+
   // Trigger Immediate Nudge Vibration request for family member
   const handleNudgeMember = async (member: FamilyMember) => {
     try {
@@ -1174,6 +1301,24 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
+        {/* Offline Fallback & SOS Diagnostics Panel */}
+        <View style={styles.smsFallbackContainer}>
+          <TouchableOpacity
+            style={styles.smsSosButton}
+            onPress={handleSendSMSBackup}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.smsSosButtonText}>🚨 Send SOS via SMS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.smsImportButton}
+            onPress={() => setImportSMSVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.smsImportButtonText}>📥 Import SMS Payload</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Family Members Status List */}
         <FamilyList
           familyMembers={familyMembers}
@@ -1232,6 +1377,14 @@ export default function App() {
           }
           await fetchFamilyLocations();
         }}
+      />
+
+      {/* Slide-Up E2EE SMS Location Importer Modal */}
+      <ImportSMSModal
+        visible={importSMSVisible}
+        onClose={() => setImportSMSVisible(false)}
+        familyMembers={familyMembers}
+        onImportSuccess={handleImportSMSSuccess}
       />
     </View>
   );
@@ -1378,6 +1531,59 @@ const styles = StyleSheet.create({
     color: '#38bdf8',
     fontSize: 11,
     fontWeight: '700',
+  },
+  smsFallbackContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginVertical: 10,
+    paddingHorizontal: 4,
+  },
+  smsSosButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#991b1b', // Red 800
+    borderColor: '#ef4444', // Red 500 border
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    shadowColor: '#ef4444',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  smsSosButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  smsImportButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1e293b', // Slate 800
+    borderColor: '#3b82f6', // Blue 500 border
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  smsImportButtonText: {
+    color: '#60a5fa', // Blue 400
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   footerText: {
     color: '#334155',
