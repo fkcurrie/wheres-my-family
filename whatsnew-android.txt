@@ -1,5 +1,6 @@
-• Added Zero-Update Hotfix system to push alerts & tuning remotely.
-• Implemented a premium, dismissible global announcement banner.
-• Optimized location tracking intervals and adaptive background GPS.
-• Resolved high-frequency diagnostic disk writing to save device battery.
-• Cleaned up unused packages, making the app bundle significantly lighter.
+Where's my family!! • Version 1.0.22 (Build 22) Release Notes:
+
+- 💾 Offline-First SQLite Transaction Store: Intermittent connectivity is no longer an issue! All coordinates are persistently queued in SQLite when offline and drained automatically upon reconnection.
+- ⚡ 90% Network Polyline Compression: Integrated high-density Google Polyline compression with delta-timestamp encoding to shrink coordinate payloads by up to 90%.
+- 🔐 Hardware Enclave Security: Transitioned local E2EE privacy keys from AsyncStore into secure, hardware-backed expo-secure-store enclaves.
+- 💤 Dynamic Geofencing Wakeups: Drastically reduced battery consumption when stationary by shutting down high-frequency GPS engines and utilizing passive 100m exit geofencing triggers.

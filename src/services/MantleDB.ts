@@ -1,10 +1,11 @@
 import { Platform, AppState } from 'react-native';
 import * as Battery from 'expo-battery';
-import { getDistanceInKm } from './Helpers';
+import { getDistanceInKm, compressTrail, decompressTrail } from './Helpers';
 import { addDiagnosticLog } from './Logger';
 import { getWeatherAndAlertsCached } from './Weather';
 import { updateAndGetLocalTrail } from './OSRM';
 import { encryptValue, decryptValue } from './Crypto';
+import { queueTransaction, getQueuedTransactions, removeQueuedTransaction } from './SqliteQueue';
 
 export const MANTLE_DB_URL =
   'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
@@ -39,6 +40,50 @@ export const getRealBatteryAndActivity = async () => {
 };
 
 /**
+ * Drain/empty the offline transaction queue by sending stored payloads to MantleDB.
+ */
+export const drainQueue = async (): Promise<void> => {
+  try {
+    const queued = await getQueuedTransactions();
+    if (queued.length === 0) return;
+
+    console.log(`[SqliteQueue] Found ${queued.length} queued transactions to sync.`);
+    await addDiagnosticLog(
+      `[Queue Sync] Resuming sync for ${queued.length} offline coordinates...`
+    );
+
+    for (const tx of queued) {
+      try {
+        const res = await fetch(MANTLE_DB_URL, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mantle-Key': MANTLE_KEY,
+          },
+          body: JSON.stringify(tx.payload),
+        });
+
+        if (res.status === 200 || res.status === 204 || res.status === 201) {
+          await removeQueuedTransaction(tx.id);
+          console.log(`[SqliteQueue] Successfully synced queued transaction ${tx.id}.`);
+        } else {
+          console.warn(`[SqliteQueue] Stopped draining queue, HTTP Status: ${res.status}`);
+          break;
+        }
+      } catch (err) {
+        console.warn(
+          `[SqliteQueue] Sync failed for transaction ${tx.id}, network still offline:`,
+          err
+        );
+        break; // Network still offline, stop draining
+      }
+    }
+  } catch (err) {
+    console.error('[SqliteQueue] Error draining queue:', err);
+  }
+};
+
+/**
  * Fetch all locations from MantleDB and transparently decrypt coordinates/trails
  */
 export const fetchMantleDB = async () => {
@@ -65,8 +110,10 @@ export const fetchMantleDB = async () => {
           if (decStatus !== null) m.status = decStatus;
         }
         if (m.trailEnc) {
-          const decTrail = decryptValue<any[]>(m.trailEnc);
-          if (decTrail !== null) m.trail = decTrail;
+          const decTrail = decryptValue<any>(m.trailEnc);
+          if (decTrail !== null) {
+            m.trail = decompressTrail(decTrail);
+          }
         }
       }
     }
@@ -110,6 +157,13 @@ export const publishLocation = async (
     lastPublishedLng = longitude;
     lastPublishedTime = now;
 
+    // Try to drain the offline queue before publishing the new coordinate
+    try {
+      await drainQueue();
+    } catch (e) {
+      console.warn('[Offline Queue Drain Bypassed]:', e);
+    }
+
     const info = await getRealBatteryAndActivity();
 
     // Fetch live weather context if coordinates are available
@@ -128,6 +182,9 @@ export const publishLocation = async (
       console.warn('[Local trail fetch bypassed]:', e);
     }
 
+    // Compress the historical trail array
+    const compressedTrailStr = localTrail && localTrail.length > 0 ? compressTrail(localTrail) : '';
+
     const payload = {
       [name]: {
         name,
@@ -141,7 +198,7 @@ export const publishLocation = async (
         latEnc: encryptValue(latitude),
         lngEnc: encryptValue(longitude),
         statusEnc: encryptValue(status),
-        trailEnc: localTrail && localTrail.length > 0 ? encryptValue(localTrail) : undefined,
+        trailEnc: compressedTrailStr ? encryptValue(compressedTrailStr) : undefined,
 
         battery: info.batteryLevel,
         charging: info.isCharging,
@@ -180,6 +237,54 @@ export const publishLocation = async (
     await addDiagnosticLog(
       `[Sync Error] Failed to publish location: ${err instanceof Error ? err.message : String(err)}`
     );
+
+    // Queue the transaction offline in SQLite for later retry when network becomes active
+    try {
+      const info = await getRealBatteryAndActivity();
+      let weatherInfo = null;
+      try {
+        weatherInfo = await getWeatherAndAlertsCached(latitude, longitude);
+      } catch (e) {}
+
+      let localTrail: any[] = [];
+      try {
+        localTrail = await updateAndGetLocalTrail(latitude, longitude, timestamp);
+      } catch (e) {}
+
+      const compressedTrailStr =
+        localTrail && localTrail.length > 0 ? compressTrail(localTrail) : '';
+
+      const payload = {
+        [name]: {
+          name,
+          latitude: 46.8182,
+          longitude: 8.2275,
+          status: 'Encrypted',
+          latEnc: encryptValue(latitude),
+          lngEnc: encryptValue(longitude),
+          statusEnc: encryptValue(status),
+          trailEnc: compressedTrailStr ? encryptValue(compressedTrailStr) : undefined,
+          battery: info.batteryLevel,
+          charging: info.isCharging,
+          deviceStatus: info.deviceStatus,
+          updatedAt: timestamp || Date.now(),
+          platform: Platform.OS,
+          ...(weatherInfo
+            ? {
+                weatherTemp: weatherInfo.temp,
+                weatherEmoji: weatherInfo.emoji,
+                weatherDesc: weatherInfo.desc,
+                weatherIsSevere: weatherInfo.isSevere,
+              }
+            : {}),
+          ...extraData,
+        },
+      };
+
+      await queueTransaction(payload);
+    } catch (queueErr) {
+      console.error('[Offline Queue Store Error]:', queueErr);
+    }
   }
 };
 

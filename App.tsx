@@ -43,6 +43,7 @@ import {
 } from './src/services/MantleDB';
 import { getDistanceInKm } from './src/services/Helpers';
 import { FamilyMember, TrailCoord } from './src/types';
+import { initQueueDatabase } from './src/services/SqliteQueue';
 
 import Onboarding from './src/components/Onboarding';
 import FamilyList from './src/components/FamilyList';
@@ -115,46 +116,91 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK_NAME, async () => {
   return BackgroundFetch.BackgroundFetchResult.NoData;
 });
 
-// --- Speed-Adaptive Tracking Controller ---
-/**
- * Dynamic battery-aware speed tracking controller.
- * Scales tracking resolution based on current movement speed (e.g. driving vs. walking/stationary).
- * @param speed Current speed in meters per second (1 m/s = 3.6 km/h)
- */
-export const updateBackgroundTrackingMode = async (speed: number) => {
-  try {
-    const isMovingFast = speed > 8; // Speed > 8 m/s (~29 km/h) is considered driving
-    const currentMode = await AsyncStorage.getItem('tracking_mode');
-    const targetMode = isMovingFast ? 'fast' : 'standard';
+// --- Geofencing Background Task Name ---
+const GEOFENCING_TASK_NAME = 'background-geofencing-task';
 
-    if (currentMode === targetMode) {
-      return; // Already configured in correct mode
+// --- Unified Tracking State Controller & Geofencing ---
+/**
+ * Advanced tracking state controller.
+ * Unifies fast tracking (driving), standard tracking, and passive dormant geofencing sleep/wakeup.
+ */
+export const updateTrackingToMode = async (
+  mode: 'fast' | 'standard' | 'passive',
+  lastCoords?: { latitude: number; longitude: number }
+) => {
+  try {
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
+    if (!isRegistered) return;
+
+    const currentMode = await AsyncStorage.getItem('tracking_mode');
+    if (currentMode === mode && mode !== 'passive') {
+      return; // Already in target mode
     }
 
-    await AsyncStorage.setItem('tracking_mode', targetMode);
-    await addDiagnosticLog(
-      `[Adaptive GPS] Speed: ${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h). Reconfiguring background location to ${targetMode.toUpperCase()} mode.`
-    );
+    const remoteStandard = await AsyncStorage.getItem('remote_standard_interval');
+    const remoteFast = await AsyncStorage.getItem('remote_fast_interval');
+    const standardInterval = remoteStandard ? parseInt(remoteStandard, 10) : 30000;
+    const fastInterval = remoteFast ? parseInt(remoteFast, 10) : 5000;
 
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
-    if (isRegistered) {
-      const remoteStandard = await AsyncStorage.getItem('remote_standard_interval');
-      const remoteFast = await AsyncStorage.getItem('remote_fast_interval');
-      const standardInterval = remoteStandard ? parseInt(remoteStandard, 10) : 30000;
-      const fastInterval = remoteFast ? parseInt(remoteFast, 10) : 5000;
+    if (mode === 'passive' && lastCoords) {
+      // 1. Unregister active high-frequency updates and start passive geofencing
+      await addDiagnosticLog(
+        `[Geofencing] Entering PASSIVE Dormant State. Registering 100m geofence at (${lastCoords.latitude.toFixed(4)}, ${lastCoords.longitude.toFixed(4)}).`
+      );
 
+      // Down-scale GPS updates to 10-minute intervals to conserve maximum battery power
+      await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 10 * 60 * 1000,
+        distanceInterval: 100,
+        deferredUpdatesInterval: 10 * 60 * 1000,
+        deferredUpdatesDistance: 100,
+        pausesUpdatesAutomatically: true,
+        foregroundService: {
+          notificationTitle: "Where's my family!! Passive Mode",
+          notificationBody: '💤 Dormant power-saving state active. Wake up on movement.',
+          notificationColor: '#475569',
+          killServiceOnDestroy: false,
+        },
+        showsBackgroundLocationIndicator: false,
+      });
+
+      // Register geofence
+      await Location.startGeofencingAsync(GEOFENCING_TASK_NAME, [
+        {
+          identifier: 'stationary-fence',
+          latitude: lastCoords.latitude,
+          longitude: lastCoords.longitude,
+          radius: 100, // 100 meters boundary
+          notifyOnExit: true,
+          notifyOnEnter: false,
+        },
+      ]);
+
+      await AsyncStorage.setItem('tracking_mode', 'passive');
+    } else {
+      // mode is 'fast' or 'standard'
+      // Stop geofencing since we are moving/active
+      try {
+        const isGeoRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCING_TASK_NAME);
+        if (isGeoRegistered) {
+          await Location.stopGeofencingAsync(GEOFENCING_TASK_NAME);
+        }
+      } catch (e) {}
+
+      const isMovingFast = mode === 'fast';
       const options = isMovingFast
         ? {
             accuracy: Location.Accuracy.High,
-            timeInterval: fastInterval, // remote or default fast interval
-            distanceInterval: 5, // 5m precision when driving
+            timeInterval: fastInterval,
+            distanceInterval: 5,
             deferredUpdatesInterval: fastInterval,
             deferredUpdatesDistance: 5,
           }
         : {
             accuracy: Location.Accuracy.High,
-            timeInterval: standardInterval, // remote or default standard interval
-            distanceInterval: 50, // 50m standard precision
+            timeInterval: standardInterval,
+            distanceInterval: 50,
             deferredUpdatesInterval: standardInterval,
             deferredUpdatesDistance: 50,
           };
@@ -173,12 +219,47 @@ export const updateBackgroundTrackingMode = async (speed: number) => {
         },
         showsBackgroundLocationIndicator: true,
       });
+
+      await AsyncStorage.setItem('tracking_mode', mode);
+      await addDiagnosticLog(
+        `[Tracking State] Transitioned to ${mode.toUpperCase()} tracking mode.`
+      );
     }
   } catch (err: any) {
-    console.warn('[Adaptive Tracking Error]:', err);
-    await addDiagnosticLog(`[Adaptive Tracking Error] Failed: ${err.message}`);
+    console.warn('[Tracking State Transition Error]:', err);
+    await addDiagnosticLog(`[Geofencing Error] Mode switch failed: ${err.message}`);
   }
 };
+
+/**
+ * Speed-adaptive background tracking controller.
+ */
+export const updateBackgroundTrackingMode = async (speed: number) => {
+  const targetMode = speed > 8 ? 'fast' : 'standard';
+  await updateTrackingToMode(targetMode);
+};
+
+// --- Geofencing Background Task Registration ---
+TaskManager.defineTask(GEOFENCING_TASK_NAME, async ({ data, error }: any) => {
+  if (error) {
+    console.error('[Geofencing Task Error]:', error);
+    await addDiagnosticLog(`[Geofencing Error] OS task failed: ${error.message}`);
+    return;
+  }
+  if (data) {
+    const { eventType, region } = data;
+    if (eventType === Location.GeofencingEventType.Exit) {
+      await addDiagnosticLog(
+        `[Geofencing Wakeup] Left boundary "${region.identifier}". Restoring standard active tracking.`
+      );
+      try {
+        await Location.stopGeofencingAsync(GEOFENCING_TASK_NAME);
+      } catch (err) {}
+
+      await updateTrackingToMode('standard');
+    }
+  }
+});
 
 // --- Background Location Tracking Task Definition ---
 TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
@@ -210,17 +291,61 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
           const latestLoc = sortedLocations[sortedLocations.length - 1];
           if (latestLoc && latestLoc.coords) {
             const speed = latestLoc.coords.speed ?? 0;
-            // Adapt background tracking rate dynamically based on current speed
-            await updateBackgroundTrackingMode(speed);
+            const currentMode = await AsyncStorage.getItem('tracking_mode');
 
-            await publishLocation(
-              savedName,
-              latestLoc.coords.latitude,
-              latestLoc.coords.longitude,
-              speed > 8 ? 'Driving Mode' : 'Background Tracking',
-              {},
-              latestLoc.timestamp
-            );
+            if (speed <= 0.3 && currentMode !== 'passive') {
+              // Track stationary ticks to prevent sudden geofence entries due to GPS bounce
+              const stationaryCountStr =
+                (await AsyncStorage.getItem('stationary_tick_count')) || '0';
+              const count = parseInt(stationaryCountStr, 10) + 1;
+              await AsyncStorage.setItem('stationary_tick_count', count.toString());
+
+              if (count >= 3) {
+                await updateTrackingToMode('passive', {
+                  latitude: latestLoc.coords.latitude,
+                  longitude: latestLoc.coords.longitude,
+                });
+                await AsyncStorage.setItem('stationary_tick_count', '0');
+
+                await publishLocation(
+                  savedName,
+                  latestLoc.coords.latitude,
+                  latestLoc.coords.longitude,
+                  'Stationary (Dormant)',
+                  {},
+                  latestLoc.timestamp
+                );
+              } else {
+                await updateBackgroundTrackingMode(speed);
+                await publishLocation(
+                  savedName,
+                  latestLoc.coords.latitude,
+                  latestLoc.coords.longitude,
+                  'Background Tracking',
+                  {},
+                  latestLoc.timestamp
+                );
+              }
+            } else {
+              // Reset stationary counter if speed is active
+              await AsyncStorage.setItem('stationary_tick_count', '0');
+
+              if (currentMode === 'passive') {
+                // Device is moving again, exit passive state
+                await updateTrackingToMode('standard');
+              } else {
+                await updateBackgroundTrackingMode(speed);
+              }
+
+              await publishLocation(
+                savedName,
+                latestLoc.coords.latitude,
+                latestLoc.coords.longitude,
+                speed > 8 ? 'Driving Mode' : 'Background Tracking',
+                {},
+                latestLoc.timestamp
+              );
+            }
           }
 
           // Immediately check for family nudges
@@ -296,6 +421,9 @@ export default function App() {
   useEffect(() => {
     const initializeProfile = async () => {
       try {
+        // Initialize SQLite transaction queue
+        await initQueueDatabase();
+
         // Load custom encryption key if any
         const loadedKey = await loadCustomFamilyKey();
         await addDiagnosticLog(
@@ -1065,7 +1193,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.21 🚀{'\n'}
+          Where's my family!! • v1.0.22 🚀{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

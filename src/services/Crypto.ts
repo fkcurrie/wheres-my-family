@@ -1,18 +1,42 @@
 import * as CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const DEFAULT_FAMILY_KEY = 'WheresMyFamilySecureKey2026';
 let cachedFamilyKey: string | null = null;
 
 /**
- * Load the user-configured custom family key from AsyncStorage on startup.
+ * Load the user-configured custom family key from SecureStore or AsyncStorage on startup.
+ * Automatically migrates to hardware-enclave SecureStore if available.
  */
 export const loadCustomFamilyKey = async (): Promise<string> => {
   try {
-    const savedKey = await AsyncStorage.getItem('custom_family_key');
-    if (savedKey) {
-      cachedFamilyKey = savedKey;
-      return savedKey;
+    const isSecureStoreAvailable = await SecureStore.isAvailableAsync();
+
+    if (isSecureStoreAvailable) {
+      const secureKey = await SecureStore.getItemAsync('custom_family_key');
+      if (secureKey) {
+        cachedFamilyKey = secureKey;
+        return secureKey;
+      }
+
+      // Migrate from standard AsyncStorage to hardware enclave SecureStore
+      const legacyKey = await AsyncStorage.getItem('custom_family_key');
+      if (legacyKey) {
+        await SecureStore.setItemAsync('custom_family_key', legacyKey, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
+        await AsyncStorage.removeItem('custom_family_key');
+        cachedFamilyKey = legacyKey;
+        console.log('[Crypto] Migrated custom family key to hardware enclave SecureStore.');
+        return legacyKey;
+      }
+    } else {
+      const savedKey = await AsyncStorage.getItem('custom_family_key');
+      if (savedKey) {
+        cachedFamilyKey = savedKey;
+        return savedKey;
+      }
     }
   } catch (err) {
     console.warn('[Crypto] Error loading custom family key:', err);
@@ -22,14 +46,27 @@ export const loadCustomFamilyKey = async (): Promise<string> => {
 
 /**
  * Set and persist a custom family key to achieve complete cryptographic privacy.
+ * Uses hardware enclave SecureStore if available, otherwise AsyncStorage.
  */
 export const setCustomFamilyKey = async (key: string): Promise<void> => {
   try {
     const trimmed = key.trim();
+    const isSecureStoreAvailable = await SecureStore.isAvailableAsync();
+
     if (trimmed) {
-      await AsyncStorage.setItem('custom_family_key', trimmed);
+      if (isSecureStoreAvailable) {
+        await SecureStore.setItemAsync('custom_family_key', trimmed, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
+        await AsyncStorage.removeItem('custom_family_key'); // Clean legacy
+      } else {
+        await AsyncStorage.setItem('custom_family_key', trimmed);
+      }
       cachedFamilyKey = trimmed;
     } else {
+      if (isSecureStoreAvailable) {
+        await SecureStore.deleteItemAsync('custom_family_key');
+      }
       await AsyncStorage.removeItem('custom_family_key');
       cachedFamilyKey = null;
     }

@@ -777,6 +777,91 @@
         }
       }
 
+      // Google Polyline decoder for web dashboard
+      function decodePolyline(str) {
+        const len = str.length;
+        let index = 0;
+        let lat = 0;
+        let lng = 0;
+        const coordinates = [];
+
+        while (index < len) {
+          let b;
+          let shift = 0;
+          let result = 0;
+          do {
+            b = str.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+          } while (b >= 0x20);
+          const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+          lat += dlat;
+
+          shift = 0;
+          result = 0;
+          do {
+            b = str.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+          } while (b >= 0x20);
+          const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+          lng += dlng;
+
+          coordinates.push({
+            latitude: lat / 1e5,
+            longitude: lng / 1e5,
+          });
+        }
+
+        return coordinates;
+      }
+
+      // Decompress trail coordinates and delta-encoded timestamps
+      function decompressTrail(compressed) {
+        if (!compressed) return [];
+        if (Array.isArray(compressed)) {
+          return compressed;
+        }
+        if (typeof compressed !== 'string') {
+          return [];
+        }
+        if (!compressed.startsWith('p1|')) {
+          try {
+            return JSON.parse(compressed);
+          } catch (e) {
+            return [];
+          }
+        }
+
+        const parts = compressed.split('|');
+        if (parts.length < 3) return [];
+
+        const polyStr = parts[1];
+        const tsStr = parts[2];
+
+        const coords = decodePolyline(polyStr);
+        const tsParts = tsStr.split(',');
+
+        const trail = [];
+        let currentTs = 0;
+
+        for (let i = 0; i < coords.length; i++) {
+          if (i === 0 && tsParts[0]) {
+            currentTs = parseInt(tsParts[0], 36);
+          } else if (tsParts[i]) {
+            currentTs += parseInt(tsParts[i], 36);
+          }
+
+          trail.push({
+            latitude: coords[i].latitude,
+            longitude: coords[i].longitude,
+            timestamp: currentTs,
+          });
+        }
+
+        return trail;
+      }
+
       let map;
       let markers = {};
       let trailLines = {};
@@ -907,7 +992,9 @@
                 }
                 if (m.trailEnc) {
                   const decTrail = decryptValue(m.trailEnc);
-                  if (decTrail !== null) m.trail = decTrail;
+                  if (decTrail !== null) {
+                    m.trail = decompressTrail(decTrail);
+                  }
                 }
               }
             }
