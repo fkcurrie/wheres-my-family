@@ -12,7 +12,10 @@
       "appleTeamId": "LSV2MNUNZ8",
       "buildNumber": "22",
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -53,7 +56,9 @@
           "locationAlwaysAndWhenInUsePermission": "Allow 'Where's my family!!' to always track your location to keep your family updated.",
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-sqlite"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
