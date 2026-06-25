@@ -1,6 +1,3 @@
-Where's my family!! • Version 1.0.25 (Build 25) Release Notes:
-
-- 🛰️ Offline E2EE SOS SMS Fallback: Added a robust offline fallback mode. Users can package, encrypt (client-side AES-256-CBC), and share their exact coordinates and battery level to pre-configured family contacts over standard SMS with zero internet connectivity.
-- 📥 Client-Side Decryptor: Introduced an in-app E2EE SMS parser. Copy and paste an SMS payload received from an offline family member to decrypt their location locally and synchronize it with the rest of the family.
-- 🎨 Premium Badging: Added sleek "🛰️ SMS Fallback" indicators to cards and custom map markers.
-- 🍏 iOS App Store Integration: Updated the TestFlight invitation and share messaging to include the real installation join link code.
+• Added beautiful expandable fullscreen map mode on tap with custom glassmorphic overlay controls.
+• Re-aligned header controls and increased tap targets to clear modern screen notches and pinholes (e.g. Pixel 9).
+• Fixed background-task encryption context initialization to resolve the Switzerland / Giswil fallback coordinate bug.

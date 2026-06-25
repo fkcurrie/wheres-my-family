@@ -36,4 +36,12 @@ export interface FamilyMember {
   latOffset?: number;
   lngOffset?: number;
   source?: 'HTTPS' | 'SMS';
+  network?: {
+    networkType: 'wifi' | 'cellular' | 'none' | 'unknown';
+    networkGen?: string;
+    wifiSSID?: string;
+    wifiStrength?: number;
+    latencyMs: number;
+    connectionBars: number;
+  };
 }

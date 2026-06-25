@@ -4,10 +4,12 @@
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "11.4.1",
     "crypto-js": "^4.2.0",
     "expo": "~54.0.0",
     "expo-background-fetch": "~14.0.9",
     "expo-battery": "~10.0.8",
+    "expo-cellular": "~8.0.8",
     "expo-doctor": "~1.19.10",
     "expo-location": "~19.0.8",
     "expo-notifications": "~0.32.17",

@@ -39,6 +39,47 @@ const getMemberPlatform = (member: FamilyMember, userName: string | null) => {
   return hash % 2 === 0 ? 'android' : 'ios';
 };
 
+const renderNetworkStatus = (network: any) => {
+  if (!network) return null;
+
+  const { networkType, networkGen, wifiSSID, connectionBars, latencyMs } = network;
+
+  let label = '';
+  let detailColor = '#94a3b8'; // Slate 400
+
+  if (networkType === 'wifi') {
+    const name = wifiSSID || 'Connected to Wi-Fi';
+    label = `Wi-Fi: "${name}"`;
+    detailColor = '#38bdf8'; // Sky 400
+  } else if (networkType === 'cellular') {
+    const gen = networkGen || 'LTE';
+    label = `${gen} Cellular`;
+    detailColor = '#10b981'; // Emerald 400 (Premium feel)
+  } else if (networkType === 'none') {
+    label = 'Offline';
+    detailColor = '#ef4444'; // Red 400
+  } else {
+    label = 'Active Network';
+  }
+
+  let barsText = '•';
+  if (connectionBars === 4) barsText = 'Excellent (4 Bars)';
+  else if (connectionBars === 3) barsText = 'Good (3 Bars)';
+  else if (connectionBars === 2) barsText = 'Fair (2 Bars)';
+  else if (connectionBars === 1) barsText = 'Weak (1 Bar)';
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: detailColor }}>📶 {label}</Text>
+      <Text style={{ color: '#475569', fontSize: 10 }}>•</Text>
+      <Text style={{ color: '#94a3b8', fontSize: 11 }}>
+        {barsText}
+        {latencyMs && latencyMs < 2000 ? ` (${latencyMs}ms)` : ''}
+      </Text>
+    </View>
+  );
+};
+
 /**
  * Memoized Family Member Card representing a single device's status and tracking state
  */
@@ -156,19 +197,22 @@ const FamilyMemberCard = React.memo(
         <View style={styles.familyDivider} />
 
         <View style={styles.familyFooter}>
-          <View style={styles.batteryRow}>
-            {member.charging ? (
-              <BatteryCharging color="#10b981" size={16} />
-            ) : member.battery < 20 ? (
-              <BatteryLow color="#ef4444" size={16} />
-            ) : member.battery < 60 ? (
-              <BatteryMedium color="#94a3b8" size={16} />
-            ) : (
-              <Battery color="#94a3b8" size={16} />
-            )}
-            <Text style={[styles.batteryText, member.battery < 20 && styles.lowBatteryText]}>
-              {member.battery}% {member.charging ? '(Charging)' : ''}
-            </Text>
+          <View style={{ flexDirection: 'column', gap: 2, flexShrink: 1, marginRight: 8 }}>
+            <View style={styles.batteryRow}>
+              {member.charging ? (
+                <BatteryCharging color="#10b981" size={16} />
+              ) : member.battery < 20 ? (
+                <BatteryLow color="#ef4444" size={16} />
+              ) : member.battery < 60 ? (
+                <BatteryMedium color="#94a3b8" size={16} />
+              ) : (
+                <Battery color="#94a3b8" size={16} />
+              )}
+              <Text style={[styles.batteryText, member.battery < 20 && styles.lowBatteryText]}>
+                {member.battery}% {member.charging ? '(Charging)' : ''}
+              </Text>
+            </View>
+            {member.network && renderNetworkStatus(member.network)}
           </View>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {member.name !== userName && (
@@ -211,6 +255,11 @@ const FamilyMemberCard = React.memo(
       prev.member.nudgeRequested === next.member.nudgeRequested &&
       prev.member.pingRequested === next.member.pingRequested &&
       prev.member.source === next.member.source &&
+      prev.member.network?.networkType === next.member.network?.networkType &&
+      prev.member.network?.networkGen === next.member.network?.networkGen &&
+      prev.member.network?.wifiSSID === next.member.network?.wifiSSID &&
+      prev.member.network?.connectionBars === next.member.network?.connectionBars &&
+      prev.member.network?.latencyMs === next.member.network?.latencyMs &&
       prev.userName === next.userName
     );
   }

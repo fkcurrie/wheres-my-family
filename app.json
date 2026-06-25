@@ -14,6 +14,9 @@
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch"],
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
       }
     },
     "android": {
@@ -41,7 +44,9 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "READ_PHONE_STATE",
+        "android.permission.READ_PHONE_STATE"
       ],
       "package": "ca.sfle.wheresmyfamily",
       "versionCode": 26
