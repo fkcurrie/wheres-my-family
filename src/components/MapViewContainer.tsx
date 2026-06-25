@@ -536,7 +536,7 @@ const styles = StyleSheet.create({
   },
   fullscreenHeader: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 54 : 32,
+    top: Platform.OS === 'ios' ? 64 : 48,
     left: 16,
     right: 16,
     backgroundColor: 'rgba(30, 41, 59, 0.85)',

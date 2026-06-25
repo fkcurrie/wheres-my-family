@@ -4,7 +4,7 @@ import { getDistanceInKm, compressTrail, decompressTrail } from './Helpers';
 import { addDiagnosticLog } from './Logger';
 import { getWeatherAndAlertsCached } from './Weather';
 import { updateAndGetLocalTrail } from './OSRM';
-import { encryptValue, decryptValue } from './Crypto';
+import { encryptValue, decryptValue, loadCustomFamilyKey } from './Crypto';
 import { queueTransaction, getQueuedTransactions, removeQueuedTransaction } from './SqliteQueue';
 
 export const MANTLE_DB_URL =
@@ -87,6 +87,7 @@ export const drainQueue = async (): Promise<void> => {
  * Fetch all locations from MantleDB and transparently decrypt coordinates/trails
  */
 export const fetchMantleDB = async () => {
+  await loadCustomFamilyKey();
   const res = await fetch(MANTLE_DB_URL, {
     headers: {
       'X-Mantle-Key': MANTLE_KEY,
@@ -134,6 +135,7 @@ export const publishLocation = async (
   timestamp?: number
 ) => {
   try {
+    await loadCustomFamilyKey();
     const now = Date.now();
     const isForced = ['App Started', 'Manual Refresh', 'Onboarding Completed'].includes(status);
 
@@ -303,6 +305,7 @@ export const publishSMSLocation = async (
   timestamp: number = Date.now()
 ) => {
   try {
+    await loadCustomFamilyKey();
     const payload = {
       [memberName]: {
         name: memberName,
