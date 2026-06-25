@@ -971,7 +971,7 @@ export default function App() {
 
   // Share App Invitation Instructions
   const shareAppInvite = async () => {
-    const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/YOUR_CODE';
+    const TESTFLIGHT_JOIN_LINK = 'https://testflight.apple.com/join/6780024343';
     const ANDROID_PREVIEW_LINK =
       'https://expo.dev/accounts/fkctor/projects/wheres-my-family/builds';
 
