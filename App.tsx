@@ -179,8 +179,8 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
       try {
         const savedName = globalStateRef.userName || (await AsyncStorage.getItem('user_name'));
         if (savedName) {
-          // Cache historical trail coordinates
-          for (let i = 0; i < sortedLocations.length - 1; i++) {
+          // Cache all coordinates to guarantee high-density 24h trail integrity
+          for (let i = 0; i < sortedLocations.length; i++) {
             const loc = sortedLocations[i];
             if (loc && loc.coords) {
               await updateAndGetLocalTrail(
@@ -211,8 +211,11 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK_NAME, async ({ data, error }) => {
           // Immediately check for family nudges
           await checkAndHandleNudge(savedName);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Background Location Task Error]:', err);
+        await addDiagnosticLog(
+          `[Background GPS Error] Failed processing updates: ${err.message || String(err)}`
+        );
       }
     }
   }
@@ -260,17 +263,56 @@ export default function App() {
           `[Crypto] Loaded active E2EE key signature: ${loadedKey === 'WheresMyFamilySecureKey2026' ? 'Default' : 'Custom'}`
         );
 
-        // Sync background tracking state with actual OS TaskManager registration
+        // Check if background tracking preference is enabled
+        let trackingEnabled = await AsyncStorage.getItem('background_tracking_enabled');
         const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
-        setIsBackgroundTracking(isRegistered);
-        if (isRegistered) {
+
+        if (trackingEnabled === null && isRegistered) {
+          // Auto-align preference on first boot if tasks are already registered
+          trackingEnabled = 'true';
+          await AsyncStorage.setItem('background_tracking_enabled', 'true');
+        }
+
+        if (trackingEnabled === 'true') {
+          setIsBackgroundTracking(true);
           setPermissionStatus('Granted (Background Active)');
+
+          // Aggressively re-register & resume background GPS updates on startup to ensure OS listeners are alive
+          try {
+            await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
+              accuracy: Location.Accuracy.High,
+              timeInterval: 30000,
+              distanceInterval: 0,
+              deferredUpdatesInterval: 30000,
+              deferredUpdatesDistance: 0,
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+              foregroundService: {
+                notificationTitle: "Where's my family!! Active",
+                notificationBody: 'Sharing your live location with your family in the background.',
+                notificationColor: '#e11d48',
+                killServiceOnDestroy: false,
+              },
+              showsBackgroundLocationIndicator: true,
+            });
+            await addDiagnosticLog('[Background Sync] Re-registered active background GPS listener.');
+          } catch (locErr: any) {
+            await addDiagnosticLog(`[Background Sync Error] Startup registration failed: ${locErr.message || String(locErr)}`);
+          }
+
           // Ensure background fetch is also registered on startup
           const isFetchRegistered = await TaskManager.isTaskRegisteredAsync(
             BACKGROUND_FETCH_TASK_NAME
           );
           if (!isFetchRegistered) {
             await registerBackgroundFetchTask();
+          }
+        } else {
+          setIsBackgroundTracking(false);
+          if (isRegistered) {
+            try {
+              await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME);
+            } catch (e) {}
           }
         }
 
@@ -587,6 +629,7 @@ export default function App() {
         });
 
         await registerBackgroundFetchTask();
+        await AsyncStorage.setItem('background_tracking_enabled', 'true');
         setIsBackgroundTracking(true);
         setPermissionStatus('Granted (Background Active)');
         await addDiagnosticLog('[Background Sync] REGISTERED successfully. Interval: 30 sec.');
@@ -608,6 +651,7 @@ export default function App() {
           await BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK_NAME);
         }
 
+        await AsyncStorage.setItem('background_tracking_enabled', 'false');
         setIsBackgroundTracking(false);
         setPermissionStatus('Granted (Active Only)');
         await addDiagnosticLog('[Background Sync] UNREGISTERED by user.');
@@ -876,7 +920,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.19 🚀{'\n'}
+          Where's my family!! • v1.0.20 🚀{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

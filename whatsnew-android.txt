@@ -1,4 +1,4 @@
-• Upgraded the live dashboard mathematical filters and aligned all coordinate distance trackers to miles for robust location analytics.
-• Refactored local verification orchestrators to print clear and actionable Git status and GitHub Actions release triggering guidelines.
-• Visual version footer update to v1.0.19 with a rocket icon showing E2EE Toronto Data Residency status on startup.
-• Completed 100% deprecation of obsolete Expo EAS and OTA command references across all development, scripting, and rule systems.
+• Fixed the 24h location trail feature by logging all coordinates in background mode.
+• Eliminated tracking gaps by caching trail coordinates during network throttle.
+• Implemented aggressive re-registration and auto-resume of background GPS updates on startup/boot.
+• Added diagnostic error log capture within background tasks for robust triaging.
