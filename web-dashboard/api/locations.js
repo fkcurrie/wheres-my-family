@@ -16,7 +16,8 @@ export default async function handler(req, res) {
   }
 
   // 1. Authenticate Request
-  const MANTLE_KEY = process.env.MANTLE_KEY || '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+  const MANTLE_KEY =
+    process.env.MANTLE_KEY || '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
   const clientKey = req.headers['x-mantle-key'] || req.headers['X-Mantle-Key'];
 
   if (clientKey !== MANTLE_KEY) {
@@ -100,7 +101,9 @@ export default async function handler(req, res) {
       for (const key of Object.keys(updatePayload)) {
         const cleanKey = sanitizeKey(key);
         if (!cleanKey) {
-          console.warn(`[Sovereign API Path Traversal/Prototype Injection Blocked]: Bypassing unsafe key: "${key}"`);
+          console.warn(
+            `[Sovereign API Path Traversal/Prototype Injection Blocked]: Bypassing unsafe key: "${key}"`
+          );
           continue;
         }
 

@@ -1,4 +1,4 @@
-• Urgent Android Nudge Fix: Resolved a bug where family notification nudges would only display inside the app and fail to alert the lock screen when backgrounded.
-• 5-Minute Stationary Check-ins: Upgraded the background fetch worker to capture and sync current GPS coordinates every 5 minutes when the device remains stationary.
-• Throttling Optimization: Lowered the database battery optimizer's publish restriction from 15 minutes down to 5 minutes to support higher-frequency background check-ins.
-• Seamless Worker Auto-Restoration: Programmed the application to automatically verify and restore periodic background sync registrations on startup if background tracking was previously active.
+• Upgraded the live dashboard mathematical filters and aligned all coordinate distance trackers to miles for robust location analytics.
+• Refactored local verification orchestrators to print clear and actionable Git status and GitHub Actions release triggering guidelines.
+• Visual version footer update to v1.0.19 with a rocket icon showing E2EE Toronto Data Residency status on startup.
+• Completed 100% deprecation of obsolete Expo EAS and OTA command references across all development, scripting, and rule systems.

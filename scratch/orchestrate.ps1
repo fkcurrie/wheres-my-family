@@ -75,17 +75,42 @@ if (Test-Path "scratch/verify_dashboard.js") {
     Write-Host " -> scratch/verify_dashboard.js not found, skipping headless diagnostics." -ForegroundColor Gray
 }
 
-# 4. Triggering EAS OTA Update
-Write-Host "[4/5] Deploying EAS OTA Update to branch preview..." -ForegroundColor Yellow
-$gitMsg = (git log -1 --pretty=%B) -replace '[\r\n]+', ' ' -replace '"', '\"'
-$updateMsg = "Autonomous Update: $gitMsg"
-Write-Host " -> Running EAS CLI compile with message: $updateMsg" -ForegroundColor Gray
+# 4. Git Alignment & GitHub Actions Pipeline Release Guidelines
+Write-Host "[4/5] Checking Git alignment for GitHub Actions CI/CD release..." -ForegroundColor Yellow
+$gitInstalled = Get-Command git -ErrorAction SilentlyContinue
+if ($null -ne $gitInstalled) {
+    # Get latest local tag
+    $latestTag = git tag -l "v*" | Sort-Object -Descending | Select-Object -First 1
+    if ([string]::IsNullOrEmpty($latestTag)) {
+        $latestTag = "none"
+    }
+    Write-Host " -> Latest release tag detected on local branch: $latestTag" -ForegroundColor Green
 
-npx.cmd eas-cli update --branch preview --message $updateMsg
-if ($LASTEXITCODE -eq 0) {
-    Write-Host " -> EAS OTA Update successfully published!" -ForegroundColor Green
+    # Check for uncommitted changes
+    $uncommittedChanges = git status --porcelain
+    if (![string]::IsNullOrEmpty($uncommittedChanges)) {
+        Write-Host " -> Warning: You have uncommitted changes in your working directory:" -ForegroundColor Yellow
+        Write-Host $uncommittedChanges -ForegroundColor Gray
+        Write-Host " -> To trigger a build, please commit your changes first." -ForegroundColor Gray
+    } else {
+        Write-Host " -> Clean branch state: No uncommitted changes detected." -ForegroundColor Green
+    }
+
+    # Display instructions for triggering build
+    Write-Host " -> To deploy these changes to Google Play (Internal) & TestFlight Beta via GitHub Actions:" -ForegroundColor Cyan
+    Write-Host "    1. Commit and push any changes to master:" -ForegroundColor Gray
+    Write-Host "       git add . && git commit -m `"your message`" && git push origin master" -ForegroundColor Gray
+    Write-Host "    2. Push a new version tag to trigger the parallel build runners:" -ForegroundColor Gray
+    if ($latestTag -ne "none") {
+        $parts = $latestTag -split '\.'
+        $parts[-1] = [int]$parts[-1] + 1
+        $nextTag = $parts -join '.'
+        Write-Host "       git tag $nextTag && git push origin $nextTag" -ForegroundColor Gray
+    } else {
+        Write-Host "       git tag v1.0.0 && git push origin v1.0.0" -ForegroundColor Gray
+    }
 } else {
-    Write-Host " -> Error: EAS OTA Update compilation failed (Exit code: $LASTEXITCODE)" -ForegroundColor Red
+    Write-Host " -> Git is not installed or repository not initialized." -ForegroundColor Red
 }
 
 # 5. Diagnostic Fetch (Emulator Screencap verification)

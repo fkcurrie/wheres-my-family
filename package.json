@@ -22,6 +22,7 @@
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
     "@types/react": "~19.1.10",
+    "eas-cli": "^20.3.0",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~10.0.0",
     "eslint-config-prettier": "^9.1.0",

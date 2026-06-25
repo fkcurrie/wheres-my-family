@@ -584,7 +584,12 @@
       <!-- Premium Glassmorphic E2EE Settings Panel -->
       <div class="e2ee-header-settings">
         <span class="e2ee-lock-icon" title="End-to-End Encryption (E2EE) Status">🔒 E2EE Key:</span>
-        <input type="password" id="e2ee-key-input" placeholder="Enter Family Key (Optional)" title="Enter custom E2EE key used by family members" />
+        <input
+          type="password"
+          id="e2ee-key-input"
+          placeholder="Enter Family Key (Optional)"
+          title="Enter custom E2EE key used by family members"
+        />
         <button id="toggle-key-visibility" title="Show/Hide Key" type="button">👁️</button>
       </div>
 
@@ -666,7 +671,7 @@
         // 1. Check URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         let key = urlParams.get('key') || urlParams.get('family_key');
-        
+
         if (key) {
           key = key.trim();
           localStorage.setItem('custom_family_key', key);
@@ -1044,8 +1049,8 @@
       }
 
       // --- Haversine Distance Helper ---
-      function getDistanceInKm(lat1, lon1, lat2, lon2) {
-        const R = 6371.0; // Earth radius in kilometers
+      function getDistanceInMiles(lat1, lon1, lat2, lon2) {
+        const R = 3958.8; // Earth radius in miles
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
         const dLon = ((lon2 - lon1) * Math.PI) / 180;
         const a =
@@ -1090,7 +1095,7 @@
 
           for (const chain of chains) {
             const lastPt = chain[chain.length - 1];
-            const dist = getDistanceInKm(
+            const dist = getDistanceInMiles(
               lastPt.latitude,
               lastPt.longitude,
               pt.latitude,
@@ -1102,20 +1107,20 @@
             let isSpeedReasonable = false;
             if (dtMs > 0) {
               const dtHours = dtMs / (1000 * 60 * 60);
-              const speedKmh = dist / dtHours;
-              if (speedKmh <= 190) {
+              const speedMph = dist / dtHours;
+              if (speedMph <= 118) {
                 isSpeedReasonable = true;
               }
             } else if (dtMs === 0) {
               // Same timestamp: allow if extremely close spatially (duplicate/sync overlap)
-              if (dist < 0.03) {
+              if (dist < 0.018) {
                 isSpeedReasonable = true;
               }
             }
 
-            // Spatial proximity check (bypass speed filter if consecutive points are within 0.8 km)
+            // Spatial proximity check (bypass speed filter if consecutive points are within 0.5 miles)
             // This perfectly supports fast-playback simulations without merging interleaved devices
-            const isSpatiallyClose = dist < 0.8; // 0.8 km
+            const isSpatiallyClose = dist < 0.5; // 0.5 miles
 
             if (isSpeedReasonable || isSpatiallyClose) {
               if (dist < minDistance) {
@@ -1145,7 +1150,7 @@
         for (const chain of validChains) {
           let maxSpanDist = 0;
           for (const pt of chain) {
-            const dist = getDistanceInKm(
+            const dist = getDistanceInMiles(
               chain[0].latitude,
               chain[0].longitude,
               pt.latitude,
@@ -1156,7 +1161,7 @@
 
           let totalDist = 0;
           for (let i = 0; i < chain.length - 1; i++) {
-            totalDist += getDistanceInKm(
+            totalDist += getDistanceInMiles(
               chain[i].latitude,
               chain[i].longitude,
               chain[i + 1].latitude,
@@ -1172,16 +1177,16 @@
         }
 
         // Filter out stationary simultaneous noise chains (e.g. tablet left at home)
-        const hasActiveMovingChain = processedChains.some((c) => c.maxSpanDist > 0.32);
+        const hasActiveMovingChain = processedChains.some((c) => c.maxSpanDist > 0.2);
 
         let finalChains = processedChains;
         if (hasActiveMovingChain) {
           finalChains = processedChains.filter((c) => {
-            if (c.maxSpanDist > 0.08) return true; // Keep if moving
+            if (c.maxSpanDist > 0.05) return true; // Keep if moving
 
             // Stationary. Check if it overlaps with an active moving chain
             const overlaps = processedChains.some((mc) => {
-              if (mc === c || mc.maxSpanDist <= 0.08) return false;
+              if (mc === c || mc.maxSpanDist <= 0.05) return false;
               // Overlaps in time with a buffer of 10s
               return (
                 (c.startTime >= mc.startTime - 10000 && c.startTime <= mc.endTime + 10000) ||
@@ -1613,7 +1618,7 @@
           '#eab308', // Sunflower Yellow
           '#14b8a6', // Teal
           '#d946ef', // Fuchsia
-          '#6366f1'  // Indigo
+          '#6366f1', // Indigo
         ];
         let hash = 0;
         for (let i = 0; i < name.length; i++) {

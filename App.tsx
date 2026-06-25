@@ -266,8 +266,9 @@ export default function App() {
         if (isRegistered) {
           setPermissionStatus('Granted (Background Active)');
           // Ensure background fetch is also registered on startup
-          const isFetchRegistered =
-            await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK_NAME);
+          const isFetchRegistered = await TaskManager.isTaskRegisteredAsync(
+            BACKGROUND_FETCH_TASK_NAME
+          );
           if (!isFetchRegistered) {
             await registerBackgroundFetchTask();
           }
@@ -875,7 +876,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.18{'\n'}
+          Where's my family!! • v1.0.19 🚀{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

@@ -15,7 +15,6 @@ const sanitizeKey = (key) => {
   return clean;
 };
 
-
 functions.http('locations', async (req, res) => {
   // CORS Headers
   res.set('Access-Control-Allow-Origin', '*');
@@ -46,24 +45,29 @@ functions.http('locations', async (req, res) => {
       const githubToken = process.env.GITHUB_TOKEN;
       if (!githubToken) {
         console.error('[GCP Backend] Missing GITHUB_TOKEN environment variable.');
-        return res.status(500).json({ error: 'GitHub issue forwarding is not configured on the server.' });
+        return res
+          .status(500)
+          .json({ error: 'GitHub issue forwarding is not configured on the server.' });
       }
 
       try {
-        const ghResponse = await fetch('https://api.github.com/repos/fkcurrie/wheres-my-family/issues', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `token ${githubToken}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'WheresMyFamilyBackendProxy'
-          },
-          body: JSON.stringify({
-            title,
-            body,
-            labels
-          })
-        });
+        const ghResponse = await fetch(
+          'https://api.github.com/repos/fkcurrie/wheres-my-family/issues',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `token ${githubToken}`,
+              Accept: 'application/vnd.github.v3+json',
+              'User-Agent': 'WheresMyFamilyBackendProxy',
+            },
+            body: JSON.stringify({
+              title,
+              body,
+              labels,
+            }),
+          }
+        );
 
         const data = await ghResponse.json();
         if (ghResponse.ok && data.html_url) {
@@ -71,11 +75,15 @@ functions.http('locations', async (req, res) => {
           return res.status(201).json({ html_url: data.html_url });
         } else {
           console.error('[GCP Backend] GitHub API error:', data);
-          return res.status(ghResponse.status).json({ error: data.message || 'GitHub issue creation failed' });
+          return res
+            .status(ghResponse.status)
+            .json({ error: data.message || 'GitHub issue creation failed' });
         }
       } catch (err) {
         console.error('[GCP Backend] Failed to forward issue to GitHub:', err);
-        return res.status(500).json({ error: 'Failed to communicate with GitHub API', details: err.message });
+        return res
+          .status(500)
+          .json({ error: 'Failed to communicate with GitHub API', details: err.message });
       }
     }
 
@@ -100,7 +108,9 @@ functions.http('locations', async (req, res) => {
         const cleanKey = sanitizeKey(key);
         // Prevent path traversal injection
         if (!cleanKey) {
-          console.warn(`[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`);
+          console.warn(
+            `[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`
+          );
           continue;
         }
 

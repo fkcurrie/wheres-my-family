@@ -20,8 +20,8 @@ It executes the following 5 phases:
 graph TD
     A[Phase 1: File Sync Integrity] -->|dashboard.html & index.html| B[Phase 2: Database Connectivity]
     B -->|Ping MantleDB| C[Phase 3: Code Syntax & Headless DOM checks]
-    C -->|tsc typechecks & verify_dashboard.js| D[Phase 4: Trigger EAS OTA Update]
-    D -->|Deploy to Preview branch| E[Phase 5: Visual Verification]
+    C -->|tsc typechecks & verify_dashboard.js| D[Phase 4: Git Status & Tag Guidelines]
+    D -->|Print Tag release instructions| E[Phase 5: Visual Verification]
     E -->|screencap & pull render| F[Execution Complete]
 ```
 
@@ -55,18 +55,18 @@ If a local Android Emulator (or USB-connected device) is active, the orchestrato
 To trigger an autonomous loop while pair programming, ask me to:
 
 - _"Run headless web checks"_ (verifies dashboard integrity)
-- _"Deploy an OTA preview update"_ (compiles typescript, checks linting, publishes via EAS CLI)
+- _"Check release status and instructions"_ (reviews local git tags, uncommitted modifications, and instructions for pushing a release tag to GitHub Actions)
 - _"Examine the live emulator screen"_ (triggers ADB screenshot and visually inspects layout correctness)
 
 ---
 
 ## 📦 App Store Release Notes ("What's New") Rule
 
-When compiling, building, and submitting production releases (EAS Build & Submit):
+When compiling, building, and submitting production releases via the GitHub Actions CI/CD pipeline:
 
 1. **Gather Changes:** Extract the key new features, performance improvements, and bug fixes introduced in this particular build version.
-2. **iOS (TestFlight):** Always pass the `--what-to-test` CLI option during the `eas submit` execution. Formulate a clean, bulleted list of the new changes.
-   - _Example:_ `npx eas-cli submit --platform ios --profile production --what-to-test "• Added in-app feedback drawer\n• Speed-adaptive background tracking"`
-3. **Android (Google Play):** Because EAS Submit does not natively upload Android "What's New" release notes, you must:
+2. **iOS (TestFlight):** Provide a clean, bulleted list of the new changes in your final response to the user. Since builds are automatically submitted via GitHub Actions, the user can review and copy these notes directly into the TestFlight build external tester notes in App Store Connect.
+   - _Example:_ "• Added speed-adaptive background tracking\n• Implemented beautiful map zoom transitions"
+3. **Android (Google Play):** Because direct `.aab` uploads do not natively inject Android release notes into the Play Console internal beta track, you must:
    - Write the exact release notes to a temporary/release file `whatsnew-android.txt` in the root of the project.
    - Print this text clearly in your final response to the user so they can copy and paste it into the draft/release section of their Google Play Console.

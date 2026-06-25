@@ -92,20 +92,40 @@ else
     echo -e "${GRAY} -> scratch/verify_dashboard.js not found, skipping headless diagnostics.${NC}"
 fi
 
-# 4. Triggering EAS OTA Update
-echo -e "${YELLOW}[4/5] Deploying EAS OTA Update to branch preview...${NC}"
+# 4. Git Alignment & GitHub Actions Pipeline Release Guidelines
+echo -e "${YELLOW}[4/5] Checking Git alignment for GitHub Actions CI/CD release...${NC}"
 if command -v git >/dev/null 2>&1; then
-    git_msg=$(git log -1 --pretty=%B | tr -d '\r' | tr '\n' ' ')
-else
-    git_msg="Manual Update"
-fi
-update_msg="Autonomous Update: $git_msg"
-echo -e "${GRAY} -> Running EAS CLI compile with message: $update_msg${NC}"
+    # Get latest local tag
+    latest_tag=$(git tag -l "v*" | sort -V | tail -n 1)
+    if [ -z "$latest_tag" ]; then
+        latest_tag="none"
+    fi
+    echo -e "${GRAY} -> Latest release tag detected on local branch: ${GREEN}$latest_tag${NC}"
 
-if npx eas-cli update --branch preview --message "$update_msg"; then
-    echo -e "${GREEN} -> EAS OTA Update successfully published!${NC}"
+    # Check for uncommitted changes
+    uncommitted_changes=$(git status --porcelain)
+    if [ -n "$uncommitted_changes" ]; then
+        echo -e "${YELLOW} -> Warning: You have uncommitted changes in your working directory:${NC}"
+        echo -e "${GRAY}$uncommitted_changes${NC}"
+        echo -e "${GRAY} -> To trigger a build, please commit your changes first.${NC}"
+    else
+        echo -e "${GREEN} -> Clean branch state: No uncommitted changes detected.${NC}"
+    fi
+
+    # Display instructions for triggering build
+    echo -e "${CYAN} -> To deploy these changes to Google Play (Internal) & TestFlight Beta via GitHub Actions:${NC}"
+    echo -e "${GRAY}    1. Commit and push any changes to master:${NC}"
+    echo -e "${GRAY}       git add . && git commit -m \"your message\" && git push origin master${NC}"
+    echo -e "${GRAY}    2. Push a new version tag to trigger the parallel build runners:${NC}"
+    # Suggest next tag version
+    if [ "$latest_tag" != "none" ]; then
+        next_tag=$(echo "$latest_tag" | awk -F. '{$NF = $NF + 1;} 1' OFS=.)
+        echo -e "${GRAY}       git tag $next_tag && git push origin $next_tag${NC}"
+    else
+        echo -e "${GRAY}       git tag v1.0.0 && git push origin v1.0.0${NC}"
+    fi
 else
-    echo -e "${RED} -> Error: EAS OTA Update compilation failed (Exit code: $?)${NC}"
+    echo -e "${RED} -> Git is not installed or repository not initialized.${NC}"
 fi
 
 # 5. Diagnostic Fetch (Emulator Screencap verification)

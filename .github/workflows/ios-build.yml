@@ -106,7 +106,7 @@ jobs:
       - name: Build & Package iOS App
         run: |
           PROV_PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | xmllint --xpath "string(//key[text()='UUID']/following-sibling::string[1])" -)
-          
+
           cd ios
           xcodebuild -workspace wheresmyfamily.xcworkspace \
                      -scheme wheresmyfamily \
@@ -118,7 +118,7 @@ jobs:
                      PROVISIONING_PROFILE_SPECIFIER="$PROV_PROFILE_UUID" \
                      CODE_SIGN_IDENTITY="Apple Distribution" \
                      archive
-          
+
           xcodebuild -exportArchive \
                      -archivePath $PWD/build/wheresmyfamily.xcarchive \
                      -exportOptionsPlist ExportOptions.plist \

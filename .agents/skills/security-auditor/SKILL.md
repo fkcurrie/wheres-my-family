@@ -59,5 +59,3 @@ Use this skill when auditing source files, changing API integrations, modifying 
    - Run typecheck: `powershell -ExecutionPolicy Bypass -Command "node_modules\typescript\bin\tsc --noEmit"`
    - Run lint: `powershell -ExecutionPolicy Bypass -Command "npm run lint"`
 3. If verification succeeds, stage and commit the patches to the master branch with a descriptive commit message (e.g., `security: sanitize Firestore document key paths`), and push to trigger clean release builds.
-
-

@@ -15,11 +15,11 @@ This repository is integrated directly with **GitHub Actions** for automated Qua
 
 ## 🔗 Live Deployments & Quick Links
 
-| Platform / Service               |           Type           | Link                                                                                                          |
-| :------------------------------- | :----------------------: | :------------------------------------------------------------------------------------------------------------ |
-| 🌐 **Live Web Dashboard**        |   Cloud Run (Toronto)    | [web-dashboard.run.app](https://web-dashboard-979889483805.northamerica-northeast2.run.app)                   |
-| 🤖 **Android Beta Track**        |   Google Play Internal   | Available on the Google Play Console Internal Testing track                                                   |
-| 🍎 **iOS Standalone Client**     |     TestFlight Beta      | [Join Apple TestFlight Beta](https://testflight.apple.com/join/6780024343)                                    |
+| Platform / Service           |         Type         | Link                                                                                        |
+| :--------------------------- | :------------------: | :------------------------------------------------------------------------------------------ |
+| 🌐 **Live Web Dashboard**    | Cloud Run (Toronto)  | [web-dashboard.run.app](https://web-dashboard-979889483805.northamerica-northeast2.run.app) |
+| 🤖 **Android Beta Track**    | Google Play Internal | Available on the Google Play Console Internal Testing track                                 |
+| 🍎 **iOS Standalone Client** |   TestFlight Beta    | [Join Apple TestFlight Beta](https://testflight.apple.com/join/6780024343)                  |
 
 ---
 
@@ -60,10 +60,10 @@ The pipelines are triggered manually via **workflow_dispatch** in the GitHub Act
 ```mermaid
 graph TD
     A[Push tag v* OR Manual Trigger] --> B[GitHub Actions Workflows]
-    
+
     B --> C[Compile Android Release]
     B --> D[Compile iOS TestFlight Release]
-    
+
     subgraph Android Pipeline
         C --> C1[Install Dependencies & Setup Node]
         C1 --> C2[Pre-Check TypeScript & Lint]
@@ -72,7 +72,7 @@ graph TD
         C4 --> C5[Compile Release AAB with Gradle]
         C5 --> C6[Direct Upload to Google Play Console Internal Track]
     end
-    
+
     subgraph iOS Pipeline
         D --> D1[Install Dependencies & Setup Node]
         D1 --> D2[Pre-Check TypeScript & Lint]

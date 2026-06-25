@@ -2,7 +2,7 @@
   "expo": {
     "name": "wheres-my-family",
     "slug": "wheres-my-family",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "ca.sfle.wheresmyfamily",
       "appleTeamId": "LSV2MNUNZ8",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch"],
         "ITSAppUsesNonExemptEncryption": false
@@ -44,7 +44,7 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION"
       ],
       "package": "ca.sfle.wheresmyfamily",
-      "versionCode": 18
+      "versionCode": 19
     },
     "plugins": [
       [
