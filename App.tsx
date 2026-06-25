@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
   window: {
     flex: 1,
     backgroundColor: '#0f172a', // Slate 900
-    paddingTop: Platform.OS === 'ios' ? 50 : 25,
+    paddingTop: Platform.OS === 'ios' ? 64 : 48,
   },
   panicWindow: {
     backgroundColor: '#450a0a', // Dark red
@@ -1478,7 +1478,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   shareIconHeader: {
-    padding: 6,
+    padding: 10,
     borderRadius: 8,
     backgroundColor: '#1e293b',
   },
