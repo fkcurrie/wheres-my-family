@@ -1,0 +1,4 @@
+• Upgraded live map mathematical filters to use miles for coordinate trails.
+• Refactored local verifiers to display actionable Git status guidelines.
+• Visual footer updated to v1.0.19 with secure E2EE Toronto residency status.
+• Fully deprecated all obsolete Expo EAS OTA command references.
