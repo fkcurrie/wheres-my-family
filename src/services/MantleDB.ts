@@ -244,12 +244,12 @@ export const publishLocation = async (
       let weatherInfo = null;
       try {
         weatherInfo = await getWeatherAndAlertsCached(latitude, longitude);
-      } catch (e) {}
+      } catch {}
 
       let localTrail: any[] = [];
       try {
         localTrail = await updateAndGetLocalTrail(latitude, longitude, timestamp);
-      } catch (e) {}
+      } catch {}
 
       const compressedTrailStr =
         localTrail && localTrail.length > 0 ? compressTrail(localTrail) : '';

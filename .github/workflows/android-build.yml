@@ -44,7 +44,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle Cache
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Decode Android Keystore
         run: |
@@ -72,5 +72,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.ANDROID_PLAY_STORE_JSON }}
           packageName: ca.sfle.wheresmyfamily
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
-          track: internal
+          tracks: internal
           whatsNewDirectory: whatsnew
