@@ -68,6 +68,13 @@ fi
 # 3. Code Syntax & Headless DOM Check
 echo -e "${YELLOW}[3/5] Performing syntax and headless DOM checks...${NC}"
 if [ -d "node_modules" ]; then
+    echo -e "${GRAY} -> Running Expo SDK health diagnostics...${NC}"
+    if npx expo-doctor; then
+        echo -e "${GREEN} -> Expo SDK health check clean.${NC}"
+    else
+        echo -e "${RED} -> Warning: Expo SDK health check flagged warnings/errors.${NC}"
+    fi
+
     if [ -f "tsconfig.json" ]; then
         echo -e "${GRAY} -> Running TypeScript compiler checks...${NC}"
         if npx tsc --noEmit; then
@@ -77,7 +84,7 @@ if [ -d "node_modules" ]; then
         fi
     fi
 else
-    echo -e "${GRAY} -> node_modules not found, skipping TypeScript checks.${NC}"
+    echo -e "${GRAY} -> node_modules not found, skipping SDK and TypeScript checks.${NC}"
 fi
 
 # Run Node Headless HTML Structural & Logic Verifier

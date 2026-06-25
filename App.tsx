@@ -1193,7 +1193,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.22 🚀{'\n'}
+          Where's my family!! • v1.0.23 🚀{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>

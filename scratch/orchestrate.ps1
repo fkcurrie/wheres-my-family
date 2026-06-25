@@ -49,6 +49,18 @@ try {
 # 3. Code Syntax & Headless DOM Check
 Write-Host "[3/5] Performing syntax and headless DOM checks..." -ForegroundColor Yellow
 if (Test-Path "node_modules") {
+    Write-Host " -> Running Expo SDK health diagnostics..." -ForegroundColor Gray
+    try {
+        & npx.cmd expo-doctor
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " -> Expo SDK health check clean." -ForegroundColor Green
+        } else {
+            Write-Host " -> Warning: Expo SDK health check flagged warnings/errors." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host " -> Expo SDK health check failed to run: $_" -ForegroundColor Red
+    }
+
     try {
         if (Test-Path "tsconfig.json") {
             Write-Host " -> Running TypeScript compiler checks..." -ForegroundColor Gray
@@ -59,7 +71,7 @@ if (Test-Path "node_modules") {
         Write-Host " -> TypeScript compilation check failed: $_" -ForegroundColor Red
     }
 } else {
-    Write-Host " -> node_modules not found, skipping TypeScript checks." -ForegroundColor Gray
+    Write-Host " -> node_modules not found, skipping SDK and TypeScript checks." -ForegroundColor Gray
 }
 
 # Run Node Headless HTML Structural & Logic Verifier
