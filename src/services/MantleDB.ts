@@ -101,9 +101,6 @@ export const publishLocation = async (
         console.log(
           `[Battery Optimizer]: Stationary (moved ${dist.toFixed(4)} km). Skipping MantleDB update to conserve power.`
         );
-        await addDiagnosticLog(
-          `[Sync Idle] Stationary (moved ${dist.toFixed(4)} km). Bypassed publish.`
-        );
         return;
       }
     }

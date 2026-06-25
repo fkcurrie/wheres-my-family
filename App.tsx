@@ -17,7 +17,17 @@ import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ShieldAlert, Share2, RefreshCw, MessageSquare, Settings } from 'lucide-react-native';
+import {
+  ShieldAlert,
+  Share2,
+  RefreshCw,
+  MessageSquare,
+  Settings,
+  Info,
+  AlertTriangle,
+  CheckCircle2,
+  X,
+} from 'lucide-react-native';
 
 // --- Modular Service & Component Imports ---
 import { addDiagnosticLog } from './src/services/Logger';
@@ -128,19 +138,24 @@ export const updateBackgroundTrackingMode = async (speed: number) => {
 
     const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING_TASK_NAME);
     if (isRegistered) {
+      const remoteStandard = await AsyncStorage.getItem('remote_standard_interval');
+      const remoteFast = await AsyncStorage.getItem('remote_fast_interval');
+      const standardInterval = remoteStandard ? parseInt(remoteStandard, 10) : 30000;
+      const fastInterval = remoteFast ? parseInt(remoteFast, 10) : 5000;
+
       const options = isMovingFast
         ? {
             accuracy: Location.Accuracy.High,
-            timeInterval: 5000, // 5s interval when driving
+            timeInterval: fastInterval, // remote or default fast interval
             distanceInterval: 5, // 5m precision when driving
-            deferredUpdatesInterval: 5000,
+            deferredUpdatesInterval: fastInterval,
             deferredUpdatesDistance: 5,
           }
         : {
             accuracy: Location.Accuracy.High,
-            timeInterval: 30000, // 30s standard interval
+            timeInterval: standardInterval, // remote or default standard interval
             distanceInterval: 50, // 50m standard precision
-            deferredUpdatesInterval: 30000,
+            deferredUpdatesInterval: standardInterval,
             deferredUpdatesDistance: 50,
           };
 
@@ -240,6 +255,30 @@ export default function App() {
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
 
+  // --- Remote Configuration & Dynamic Announcement States ---
+  const [globalAnnouncement, setGlobalAnnouncement] = useState<{
+    id: string;
+    message: string;
+    type: 'info' | 'warning' | 'success' | 'critical';
+    dismissible: boolean;
+  } | null>(null);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
+
+  // Load dismissed announcements from cache on mount
+  useEffect(() => {
+    const loadDismissed = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('dismissed_announcements');
+        if (raw) {
+          setDismissedAnnouncements(JSON.parse(raw));
+        }
+      } catch (err) {
+        console.warn('[Remote Config] Error loading dismissed banners:', err);
+      }
+    };
+    loadDismissed();
+  }, []);
+
   const mapRef = useRef<MapView | null>(null);
   const userLocationRef = useRef<Location.LocationObject | null>(null);
 
@@ -279,11 +318,14 @@ export default function App() {
 
           // Aggressively re-register & resume background GPS updates on startup to ensure OS listeners are alive
           try {
+            const remoteStandard = await AsyncStorage.getItem('remote_standard_interval');
+            const standardInterval = remoteStandard ? parseInt(remoteStandard, 10) : 30000;
+
             await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
               accuracy: Location.Accuracy.High,
-              timeInterval: 30000,
+              timeInterval: standardInterval,
               distanceInterval: 0,
-              deferredUpdatesInterval: 30000,
+              deferredUpdatesInterval: standardInterval,
               deferredUpdatesDistance: 0,
               pausesUpdatesAutomatically: false,
               activityType: Location.ActivityType.AutomotiveNavigation,
@@ -295,9 +337,13 @@ export default function App() {
               },
               showsBackgroundLocationIndicator: true,
             });
-            await addDiagnosticLog('[Background Sync] Re-registered active background GPS listener.');
+            await addDiagnosticLog(
+              '[Background Sync] Re-registered active background GPS listener.'
+            );
           } catch (locErr: any) {
-            await addDiagnosticLog(`[Background Sync Error] Startup registration failed: ${locErr.message || String(locErr)}`);
+            await addDiagnosticLog(
+              `[Background Sync Error] Startup registration failed: ${locErr.message || String(locErr)}`
+            );
           }
 
           // Ensure background fetch is also registered on startup
@@ -343,6 +389,41 @@ export default function App() {
     try {
       const data = await fetchMantleDB();
       if (data && !data.error) {
+        // Transparent Remote Configuration & Dynamic Announcement Banner Check
+        if (data._config) {
+          const config = data._config;
+
+          // 1. Process active remote announcements
+          if (config.announcement) {
+            const ann = config.announcement;
+            if (!dismissedAnnouncements.includes(ann.id)) {
+              setGlobalAnnouncement(ann);
+            } else {
+              setGlobalAnnouncement(null);
+            }
+          } else {
+            setGlobalAnnouncement(null);
+          }
+
+          // 2. Cache remote standard and driving intervals
+          if (config.settings) {
+            const remoteSettings = config.settings;
+            if (remoteSettings.standardInterval) {
+              await AsyncStorage.setItem(
+                'remote_standard_interval',
+                String(remoteSettings.standardInterval)
+              );
+            }
+            if (remoteSettings.fastInterval) {
+              await AsyncStorage.setItem(
+                'remote_fast_interval',
+                String(remoteSettings.fastInterval)
+              );
+            }
+          }
+        } else {
+          setGlobalAnnouncement(null);
+        }
         // Direct local nudge foreground handling
         if (userName && data[userName] && data[userName].nudgeRequested === true) {
           Vibration.vibrate([0, 500, 200, 500]);
@@ -464,7 +545,7 @@ export default function App() {
         `[Poll Error] Failed syncing locations: ${e instanceof Error ? e.message : String(e)}`
       );
     }
-  }, [userName]);
+  }, [userName, dismissedAnnouncements]);
 
   // Periodic Polling (every 4 seconds) for real-time foreground updates
   useEffect(() => {
@@ -611,11 +692,14 @@ export default function App() {
         }
 
         // Register background tracking task
+        const remoteStandard = await AsyncStorage.getItem('remote_standard_interval');
+        const standardInterval = remoteStandard ? parseInt(remoteStandard, 10) : 30000;
+
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 30000,
+          timeInterval: standardInterval,
           distanceInterval: 0,
-          deferredUpdatesInterval: 30000,
+          deferredUpdatesInterval: standardInterval,
           deferredUpdatesDistance: 0,
           pausesUpdatesAutomatically: false,
           activityType: Location.ActivityType.AutomotiveNavigation,
@@ -632,7 +716,9 @@ export default function App() {
         await AsyncStorage.setItem('background_tracking_enabled', 'true');
         setIsBackgroundTracking(true);
         setPermissionStatus('Granted (Background Active)');
-        await addDiagnosticLog('[Background Sync] REGISTERED successfully. Interval: 30 sec.');
+        await addDiagnosticLog(
+          `[Background Sync] REGISTERED successfully. Interval: ${(standardInterval / 1000).toFixed(0)} sec.`
+        );
         Alert.alert(
           'Background Tracking Enabled',
           'Your location is now being securely shared in the background. It will persist even when the app is closed.'
@@ -867,6 +953,65 @@ export default function App() {
         </View>
       </View>
 
+      {/* Dynamic Remote Announcement Banner */}
+      {globalAnnouncement && (
+        <View
+          style={[
+            styles.banner,
+            globalAnnouncement.type === 'warning' && styles.banner_warning,
+            globalAnnouncement.type === 'success' && styles.banner_success,
+            globalAnnouncement.type === 'critical' && styles.banner_critical,
+            globalAnnouncement.type === 'info' && styles.banner_info,
+          ]}
+        >
+          <View style={styles.bannerContent}>
+            {globalAnnouncement.type === 'info' && <Info color="#38bdf8" size={18} />}
+            {globalAnnouncement.type === 'warning' && <AlertTriangle color="#fbbf24" size={18} />}
+            {globalAnnouncement.type === 'success' && <CheckCircle2 color="#34d399" size={18} />}
+            {globalAnnouncement.type === 'critical' && <AlertTriangle color="#f87171" size={18} />}
+            <Text
+              style={[
+                styles.bannerText,
+                globalAnnouncement.type === 'warning' && styles.bannerText_warning,
+                globalAnnouncement.type === 'success' && styles.bannerText_success,
+                globalAnnouncement.type === 'critical' && styles.bannerText_critical,
+                globalAnnouncement.type === 'info' && styles.bannerText_info,
+              ]}
+            >
+              {globalAnnouncement.message}
+            </Text>
+          </View>
+          {globalAnnouncement.dismissible && (
+            <TouchableOpacity
+              onPress={async () => {
+                const updated = [...dismissedAnnouncements, globalAnnouncement.id];
+                setDismissedAnnouncements(updated);
+                await AsyncStorage.setItem('dismissed_announcements', JSON.stringify(updated));
+                setGlobalAnnouncement(null);
+                await addDiagnosticLog(
+                  `[UI] Dismissed announcement banner: "${globalAnnouncement.id}"`
+                );
+              }}
+              style={styles.bannerCloseButton}
+              accessibilityLabel="Dismiss Announcement"
+            >
+              <X
+                color={
+                  globalAnnouncement.type === 'critical'
+                    ? '#f87171'
+                    : globalAnnouncement.type === 'warning'
+                      ? '#fbbf24'
+                      : globalAnnouncement.type === 'success'
+                        ? '#34d399'
+                        : '#64748b'
+                }
+                size={14}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Live Map View Container */}
         <MapViewContainer
@@ -920,7 +1065,7 @@ export default function App() {
 
         {/* Version Footer */}
         <Text style={styles.footerText}>
-          Where's my family!! • v1.0.20 🚀{'\n'}
+          Where's my family!! • v1.0.21 🚀{'\n'}
           E2EE Data Residency: Toronto, Canada 🇨🇦
         </Text>
       </ScrollView>
@@ -965,6 +1110,60 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  banner_info: {
+    backgroundColor: 'rgba(14, 165, 233, 0.08)',
+    borderBottomColor: 'rgba(14, 165, 233, 0.2)',
+  },
+  banner_warning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderBottomColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  banner_success: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderBottomColor: 'rgba(16, 185, 129, 0.2)',
+  },
+  banner_critical: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderBottomColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    paddingRight: 10,
+  },
+  bannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    flex: 1,
+  },
+  bannerText_info: {
+    color: '#38bdf8',
+  },
+  bannerText_warning: {
+    color: '#fbbf24',
+  },
+  bannerText_success: {
+    color: '#34d399',
+  },
+  bannerText_critical: {
+    color: '#f87171',
+  },
+  bannerCloseButton: {
+    padding: 5,
+    borderRadius: 6,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+  },
   window: {
     flex: 1,
     backgroundColor: '#0f172a', // Slate 900
