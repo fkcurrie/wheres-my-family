@@ -186,7 +186,7 @@ export const updateTrackingToMode = async (
         if (isGeoRegistered) {
           await Location.stopGeofencingAsync(GEOFENCING_TASK_NAME);
         }
-      } catch (e) {}
+      } catch {}
 
       const isMovingFast = mode === 'fast';
       const options = isMovingFast
@@ -254,7 +254,7 @@ TaskManager.defineTask(GEOFENCING_TASK_NAME, async ({ data, error }: any) => {
       );
       try {
         await Location.stopGeofencingAsync(GEOFENCING_TASK_NAME);
-      } catch (err) {}
+      } catch {}
 
       await updateTrackingToMode('standard');
     }
@@ -486,7 +486,7 @@ export default function App() {
           if (isRegistered) {
             try {
               await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK_NAME);
-            } catch (e) {}
+            } catch {}
           }
         }
 
