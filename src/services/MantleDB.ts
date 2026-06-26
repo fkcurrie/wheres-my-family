@@ -6,6 +6,7 @@ import { getWeatherAndAlertsCached } from './Weather';
 import { updateAndGetLocalTrail } from './OSRM';
 import { encryptValue, decryptValue, loadCustomFamilyKey } from './Crypto';
 import { queueTransaction, getQueuedTransactions, removeQueuedTransaction } from './SqliteQueue';
+import { getNetworkTelemetry } from './Network';
 
 export const MANTLE_DB_URL =
   'https://northamerica-northeast2-wheres-my-family-499822.cloudfunctions.net/locations';
@@ -116,6 +117,12 @@ export const fetchMantleDB = async () => {
             m.trail = decompressTrail(decTrail);
           }
         }
+        if (m.netEnc) {
+          const decNet = decryptValue<any>(m.netEnc);
+          if (decNet !== null) {
+            m.network = decNet;
+          }
+        }
         m.source = m.source || 'HTTPS';
       }
     }
@@ -134,6 +141,13 @@ export const publishLocation = async (
   extraData: any = {},
   timestamp?: number
 ) => {
+  let networkTelemetry = null;
+  try {
+    networkTelemetry = await getNetworkTelemetry();
+  } catch (e) {
+    console.warn('[Network telemetry bypassed]:', e);
+  }
+
   try {
     await loadCustomFamilyKey();
     const now = Date.now();
@@ -203,6 +217,7 @@ export const publishLocation = async (
         lngEnc: encryptValue(longitude),
         statusEnc: encryptValue(status),
         trailEnc: compressedTrailStr ? encryptValue(compressedTrailStr) : undefined,
+        netEnc: networkTelemetry ? encryptValue(networkTelemetry) : undefined,
 
         battery: info.batteryLevel,
         charging: info.isCharging,
@@ -269,6 +284,7 @@ export const publishLocation = async (
           lngEnc: encryptValue(longitude),
           statusEnc: encryptValue(status),
           trailEnc: compressedTrailStr ? encryptValue(compressedTrailStr) : undefined,
+          netEnc: networkTelemetry ? encryptValue(networkTelemetry) : undefined,
           battery: info.batteryLevel,
           charging: info.isCharging,
           deviceStatus: info.deviceStatus,
