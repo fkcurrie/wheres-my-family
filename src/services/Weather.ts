@@ -13,8 +13,15 @@ export const getWeatherAndAlerts = async (
 ): Promise<WeatherInfo | null> => {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&temperature_unit=celsius&wind_speed_unit=ms&precipitation_unit=mm`;
-    const res = await fetch(url);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const json = await res.json();
+
     if (json && json.current) {
       const temp = Math.round(json.current.temperature_2m);
       const code = json.current.weather_code;

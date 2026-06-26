@@ -563,7 +563,7 @@ export default function App() {
           Vibration.vibrate([0, 500, 200, 500]);
           await addDiagnosticLog(`[Nudge] RECEIVED a nudge vibration request in foreground!`);
           Alert.alert('📳 Family Nudge!', 'Someone in your family is nudging you to check in!');
-          await clearNudgeState(userName, data[userName]);
+          await clearNudgeState(userName);
         }
 
         // Direct local ping foreground handling
@@ -724,11 +724,13 @@ export default function App() {
     snapTrailsForMembers();
   }, [showTrails, familyMembers, snappedTrails]);
 
-  // Foreground GPS tracking setup with background permission requests
+  // Foreground GPS tracking setup with background permission requests & AppState management
   useEffect(() => {
     let foregroundSub: { remove: () => void } | null = null;
+    let isWatching = false;
 
-    const setupForegroundLocationTracking = async () => {
+    const startWatching = async () => {
+      if (isWatching) return;
       try {
         const { status: foreStatus } = await Location.requestForegroundPermissionsAsync();
         if (foreStatus !== 'granted') {
@@ -769,18 +771,37 @@ export default function App() {
           }
         );
 
+        isWatching = true;
         setPermissionStatus('Granted (Active)');
       } catch (err) {
-        console.warn('GPS initial watch setup error:', err);
+        console.warn('GPS watch setup error:', err);
       }
     };
 
-    setupForegroundLocationTracking();
-
-    return () => {
+    const stopWatching = () => {
       if (foregroundSub) {
         foregroundSub.remove();
+        foregroundSub = null;
+        isWatching = false;
       }
+    };
+
+    const handleAppStateChange = (nextState: string) => {
+      if (nextState === 'active') {
+        startWatching();
+      } else {
+        stopWatching();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Bootstrap initial watcher based on current AppState
+    handleAppStateChange(AppState.currentState);
+
+    return () => {
+      appStateSubscription.remove();
+      stopWatching();
     };
   }, [userName]);
 

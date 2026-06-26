@@ -235,76 +235,34 @@ export const publishLocation = async (
       },
     };
 
-    await fetch(MANTLE_DB_URL, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Mantle-Key': MANTLE_KEY,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log(
-      `[Background Sync]: Successfully published location for ${name}. Battery: ${info.batteryLevel}%, Status: ${info.deviceStatus}`
-    );
-    await addDiagnosticLog(
-      `[Sync Success] Coords encrypted and uploaded (${status}). Bat: ${info.batteryLevel}%`
-    );
-  } catch (err) {
-    console.error('[Background Sync Error]:', err);
-    await addDiagnosticLog(
-      `[Sync Error] Failed to publish location: ${err instanceof Error ? err.message : String(err)}`
-    );
-
-    // Queue the transaction offline in SQLite for later retry when network becomes active
     try {
-      const info = await getRealBatteryAndActivity();
-      let weatherInfo = null;
-      try {
-        weatherInfo = await getWeatherAndAlertsCached(latitude, longitude);
-      } catch {}
-
-      let localTrail: any[] = [];
-      try {
-        localTrail = await updateAndGetLocalTrail(latitude, longitude, timestamp);
-      } catch {}
-
-      const compressedTrailStr =
-        localTrail && localTrail.length > 0 ? compressTrail(localTrail) : '';
-
-      const payload = {
-        [name]: {
-          name,
-          latitude: latitude,
-          longitude: longitude,
-          status: 'Encrypted',
-          source: 'HTTPS',
-          latEnc: encryptValue(latitude),
-          lngEnc: encryptValue(longitude),
-          statusEnc: encryptValue(status),
-          trailEnc: compressedTrailStr ? encryptValue(compressedTrailStr) : undefined,
-          netEnc: networkTelemetry ? encryptValue(networkTelemetry) : undefined,
-          battery: info.batteryLevel,
-          charging: info.isCharging,
-          deviceStatus: info.deviceStatus,
-          updatedAt: timestamp || Date.now(),
-          platform: Platform.OS,
-          ...(weatherInfo
-            ? {
-                weatherTemp: weatherInfo.temp,
-                weatherEmoji: weatherInfo.emoji,
-                weatherDesc: weatherInfo.desc,
-                weatherIsSevere: weatherInfo.isSevere,
-              }
-            : {}),
-          ...extraData,
+      await fetch(MANTLE_DB_URL, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Mantle-Key': MANTLE_KEY,
         },
-      };
+        body: JSON.stringify(payload),
+      });
 
+      console.log(
+        `[Background Sync]: Successfully published location for ${name}. Battery: ${info.batteryLevel}%, Status: ${info.deviceStatus}`
+      );
+      await addDiagnosticLog(
+        `[Sync Success] Coords encrypted and uploaded (${status}). Bat: ${info.batteryLevel}%`
+      );
+    } catch (fetchErr) {
+      console.warn('[Background Sync Error]: Server unreachable, queueing offline:', fetchErr);
+      await addDiagnosticLog(
+        `[Sync Queue] Offline: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`
+      );
       await queueTransaction(payload);
-    } catch (queueErr) {
-      console.error('[Offline Queue Store Error]:', queueErr);
     }
+  } catch (err) {
+    console.error('[Fatal Location Sync Error]:', err);
+    await addDiagnosticLog(
+      `[Fatal Sync Error] Failed: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 };
 
@@ -392,11 +350,7 @@ export const requestNudgeMember = async (member: any) => {
 /**
  * Clear the nudgeRequested state for the current user
  */
-export const clearNudgeState = async (savedName: string, currentUserData: any) => {
-  const clearedUser = {
-    ...currentUserData,
-    nudgeRequested: false,
-  };
+export const clearNudgeState = async (savedName: string) => {
   await fetch(MANTLE_DB_URL, {
     method: 'PATCH',
     headers: {
@@ -404,7 +358,7 @@ export const clearNudgeState = async (savedName: string, currentUserData: any) =
       'X-Mantle-Key': MANTLE_KEY,
     },
     body: JSON.stringify({
-      [savedName]: clearedUser,
+      [savedName]: { nudgeRequested: false },
     }),
   });
 };
