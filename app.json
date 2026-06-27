@@ -14,9 +14,6 @@
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch"],
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "entitlements": {
-        "com.apple.developer.networking.wifi-info": true
       }
     },
     "android": {
