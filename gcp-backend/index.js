@@ -3,6 +3,7 @@ const functions = require('@google-cloud/functions-framework');
 
 const db = new Firestore();
 const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+const ALLOWED_MEMBER_KEYS = new Set(['Dad', 'Apple-test', 'Emulator']);
 
 const sanitizeKey = (key) => {
   if (typeof key !== 'string') return '';
@@ -166,7 +167,7 @@ functions.http('locations', async (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON payload' });
       }
 
-      // Perform Batch updates / deletes with key path traversal sanitization
+      // Perform Batch updates / deletes with key path traversal sanitization and member account validation
       const batch = db.batch();
       for (const key of Object.keys(updatePayload)) {
         const cleanKey = sanitizeKey(key);
@@ -174,6 +175,14 @@ functions.http('locations', async (req, res) => {
         if (!cleanKey) {
           console.warn(
             `[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`
+          );
+          continue;
+        }
+
+        // Restrict document creation and updates exclusively to approved member profiles
+        if (!ALLOWED_MEMBER_KEYS.has(cleanKey)) {
+          console.warn(
+            `[GCP Backend Unauthorized Member Blocked]: Bypassing unapproved member key: "${cleanKey}"`
           );
           continue;
         }
