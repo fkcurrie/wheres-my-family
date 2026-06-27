@@ -51,7 +51,12 @@ const flushLogsToDisk = async () => {
 const dispatchRemoteLog = async (msg: string) => {
   try {
     // 1. Load the active display name to attribute the log entry
-    const savedName = (await AsyncStorage.getItem('user_name')) || 'UnknownDevice';
+    let savedName = 'UnknownDevice';
+    try {
+      savedName = (await AsyncStorage.getItem('user_name')) || 'UnknownDevice';
+    } catch {
+      // Gracefully fall back, allowing the dispatch of the log to succeed
+    }
 
     // 2. Classify log severity automatically based on message keywords
     let severity = 'INFO';

@@ -109,10 +109,49 @@ functions.http('locations', async (req, res) => {
       // Printing structured JSON to stdout is parsed natively by Google Cloud Logging
       console.log(JSON.stringify(logPayload));
 
+      // Also save to Firestore 'logs' collection for real-time dashboard stream
+      try {
+        await db.collection('logs').add(logPayload);
+
+        // Keep Firestore collection size small by deleting logs older than 48 hours (5% chance per request to save operations)
+        if (Math.random() < 0.05) {
+          const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+          const oldLogs = await db.collection('logs')
+            .where('timestamp', '<', cutoff)
+            .limit(50)
+            .get();
+          if (!oldLogs.empty) {
+            const batch = db.batch();
+            oldLogs.forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
+          }
+        }
+      } catch (dbErr) {
+        console.error('[Cloud Function DB Log Error]:', dbErr);
+      }
+
       return res.status(201).json({ status: 'success' });
     }
 
     if (req.method === 'GET') {
+      // Return live error logs stream if requested
+      if (req.query.type === 'logs') {
+        try {
+          const logsSnapshot = await db.collection('logs')
+            .orderBy('timestamp', 'desc')
+            .limit(100)
+            .get();
+          const logsData = [];
+          logsSnapshot.forEach((doc) => {
+            logsData.push({ id: doc.id, ...doc.data() });
+          });
+          return res.status(200).json(logsData);
+        } catch (logsErr) {
+          console.error('[Cloud Function Fetch Logs Error]:', logsErr);
+          return res.status(500).json({ error: 'Failed fetching log stream', details: logsErr.message });
+        }
+      }
+
       const snapshot = await collectionRef.get();
       const responseData = {};
       snapshot.forEach((doc) => {

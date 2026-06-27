@@ -569,6 +569,43 @@
           height: 450px;
         }
       }
+
+      @keyframes pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      }
+      .pulse-dot {
+        animation: pulse 2s infinite;
+      }
+      
+      /* Log levels styling */
+      .log-line {
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        line-height: 14px;
+        word-break: break-all;
+        font-family: monospace;
+      }
+      .log-time {
+        color: #64748b;
+        margin-right: 6px;
+      }
+      .log-device {
+        color: #3b82f6;
+        font-weight: 600;
+        margin-right: 6px;
+      }
+      .log-msg-info {
+        color: #10b981;
+      }
+      .log-msg-warning {
+        color: #f59e0b;
+      }
+      .log-msg-error {
+        color: #ef4444;
+        font-weight: bold;
+      }
     </style>
   </head>
   <body>
@@ -623,6 +660,20 @@
           <!-- Live content injected via JS -->
           <div style="color: var(--text-secondary); text-align: center; padding: 40px 0">
             Connecting to MantleDB live locations...
+          </div>
+        </div>
+
+        <!-- Live Diagnostics Log Console -->
+        <div class="diagnostics-console-container" style="margin-top: 24px; border-top: 1px solid var(--border-dim); padding-top: 20px; display: flex; flex-direction: column; flex-grow: 1; min-height: 250px;">
+          <div class="section-title" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="display: flex; align-items: center; gap: 8px;">
+              <span class="pulse-dot" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #10b981;"></span>
+              Live Diagnostics Stream
+            </span>
+            <span style="font-size: 11px; font-family: monospace; color: var(--text-secondary); cursor: pointer;" onclick="clearLiveLogs()">Clear</span>
+          </div>
+          <div id="live-diagnostics-console" style="background: rgba(0, 0, 0, 0.95); border: 1px solid var(--border-dim); border-radius: 12px; font-family: monospace; font-size: 11px; color: #10b981; padding: 12px; flex-grow: 1; overflow-y: auto; max-height: 260px; display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);">
+            <div style="color: #64748b;">Awaiting client log stream...</div>
           </div>
         </div>
       </div>
@@ -919,11 +970,64 @@
           if (secondsLeft <= 0) {
             indicator.textContent = 'Syncing...';
             fetchLocations();
+            fetchLiveLogs();
             secondsLeft = 10;
           } else {
             indicator.textContent = `Refreshing in ${secondsLeft}s...`;
           }
         }, 1000);
+      }
+
+      // Fetch and render Live Diagnostics Logs from Firestore 'logs' collection
+      async function fetchLiveLogs() {
+        try {
+          const response = await fetch(`${MANTLE_DB_URL}?type=logs`, {
+            headers: { 'X-Mantle-Key': MANTLE_KEY },
+          });
+          const logs = await response.json();
+          if (Array.isArray(logs)) {
+            const consoleEl = document.getElementById('live-diagnostics-console');
+            if (consoleEl) {
+              if (logs.length === 0) {
+                consoleEl.innerHTML = '<div style="color: #64748b;">Awaiting client log stream...</div>';
+                return;
+              }
+              
+              // Map logs to HTML lines
+              const htmlLines = logs.map(log => {
+                const time = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                const device = log.deviceName || 'Device';
+                const severity = (log.severity || 'INFO').toUpperCase();
+                
+                let severityClass = 'log-msg-info';
+                if (severity === 'WARNING' || severity === 'WARN') {
+                  severityClass = 'log-msg-warning';
+                } else if (severity === 'ERROR') {
+                  severityClass = 'log-msg-error';
+                }
+                
+                return `
+                  <div class="log-line">
+                    <span class="log-time">[${time}]</span>
+                    <span class="log-device">${device}</span>
+                    <span class="${severityClass}">${log.message || ''}</span>
+                  </div>
+                `;
+              }).join('');
+              
+              consoleEl.innerHTML = htmlLines;
+            }
+          }
+        } catch (err) {
+          console.error('[Logs Stream Error]: Failed to fetch logs:', err);
+        }
+      }
+      
+      function clearLiveLogs() {
+        const consoleEl = document.getElementById('live-diagnostics-console');
+        if (consoleEl) {
+          consoleEl.innerHTML = '<div style="color: #64748b;">Logs cleared. Waiting for new entries...</div>';
+        }
       }
 
       // Nudge API Trigger
@@ -1746,6 +1850,7 @@
         initE2EEKey();
         initMap();
         fetchLocations();
+        fetchLiveLogs();
         startRefreshCountdown();
       };
     </script>
