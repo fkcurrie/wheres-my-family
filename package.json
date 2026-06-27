@@ -43,7 +43,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "build": "mkdir -p public && cp web-dashboard/index.html public/index.html && cp dashboard.html public/dashboard.html",
-    "feedback-server": "node scratch/feedback_server.js"
+    "feedback-server": "node scratch/feedback_server.js",
+    "monitor-builds": "node .agents/skills/pipeline-monitor/scripts/monitor.js"
   },
   "private": true
 }
