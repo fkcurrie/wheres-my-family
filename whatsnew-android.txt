@@ -1,4 +1,4 @@
-WhatsNew in Where's my family!! (v1.0.29)
-- Fixed a critical silent log drop bug by isolating AsyncStorage calls inside the remote log dispatcher, ensuring device diagnostics continue streaming even when storage is deactivated during startup.
-- Implemented real-time diagnostics streaming directly on the Google Cloud Run web control dashboard.
-- Ensured seamless sync of local and cloud dashboard interfaces for instant real-time family coordinate tracking.
+• Fixed version and build sequence numbers to v1.0.29 (build 29) for flawless Play Console rollout.
+• Cleaned Firestore records to enforce strict authorized user accounts (Dad, Apple-test, Emulator) and secure real-time tracking privacy.
+• Resolved the Google Cloud feedback payload submission issue, restoring fully functional bug reporting capabilities.
+• Installed active pipeline tracking and automated build monitor scripts for developer operations.
