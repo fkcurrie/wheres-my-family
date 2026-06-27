@@ -1,6 +1,6 @@
 # 🔑 Sovereign Encryption Passkey Rotation & Mismatch Troubleshooting Guide
 
-To achieve absolute location privacy, the **"Where's my family!!"** ecosystem employs **Zero-Knowledge client-side End-to-End Encryption (E2EE)**. This means your family's physical coordinates are converted into mathematically unreadable ciphertexts *on the phone* before they are sent to the cloud.
+To achieve absolute location privacy, the **"Where's my family!!"** ecosystem employs **Zero-Knowledge client-side End-to-End Encryption (E2EE)**. This means your family's physical coordinates are converted into mathematically unreadable ciphertexts _on the phone_ before they are sent to the cloud.
 
 The security of this architecture depends entirely on a **shared family passkey**. This guide outlines how to manage, rotate, and troubleshoot passkey configurations.
 
@@ -19,14 +19,18 @@ graph TD
 ```
 
 ### 1. The Design Logic
-To prevent Google Cloud, Firestore database administrators, or unauthorized network observers from tracing your family's daily movements, the application hides physical coordinates. 
-* In the database, the plain-text properties for every member are hardcoded to `latitude: 46.8182` and `longitude: 8.2275` (the geographical center of Switzerland, near Giswil).
-* The actual coordinates reside solely in the encrypted attributes `latEnc` and `lngEnc`.
-* When the web dashboard or a family member's phone fetches locations, it attempts to decrypt the ciphertexts using their local shared passkey.
-* **If decryption fails** (due to a typo, missing passkey, or a mismatched key), the software falls back to rendering the safe plaintext coordinates, showing that member in **Giswil, Switzerland**.
+
+To prevent Google Cloud, Firestore database administrators, or unauthorized network observers from tracing your family's daily movements, the application hides physical coordinates.
+
+- In the database, the plain-text properties for every member are hardcoded to `latitude: 46.8182` and `longitude: 8.2275` (the geographical center of Switzerland, near Giswil).
+- The actual coordinates reside solely in the encrypted attributes `latEnc` and `lngEnc`.
+- When the web dashboard or a family member's phone fetches locations, it attempts to decrypt the ciphertexts using their local shared passkey.
+- **If decryption fails** (due to a typo, missing passkey, or a mismatched key), the software falls back to rendering the safe plaintext coordinates, showing that member in **Giswil, Switzerland**.
 
 ### 2. Diagnosis Steps
+
 If you or a family member appears in Switzerland:
+
 1. Verify if your passkey is configured. If you have not completed the onboarding key entry, your device cannot decrypt incoming trails.
 2. Confirm that you are using the **exact same passkey string** as the rest of your family members.
 3. Passkeys are fully **case-sensitive** and spacing-sensitive. "MyFamilyKey" is not the same as "myfamilykey" or "MyFamilyKey ".
@@ -38,10 +42,13 @@ If you or a family member appears in Switzerland:
 Over time, you may want to rotate your family passkey to maintain operational security or if a family device is compromised. Follow this sequence to prevent tracking disruption:
 
 ### Step 1: Inform Your Family
+
 Coordinate a time to update the key. Because location decryption is client-side, changing the passkey will temporarily display members in Switzerland until all devices are synchronized.
 
 ### Step 2: Update Mobile Clients
+
 Every family member must update the passkey on their mobile app:
+
 1. Open the application.
 2. Tap the **Settings** gear icon (or settings panel).
 3. Under the **E2EE Passkey** field, delete the old string and enter the new, high-entropy passkey.
@@ -49,6 +56,7 @@ Every family member must update the passkey on their mobile app:
 5. Once saved, the app will automatically migrate and store the key inside the device's hardware enclave (iOS Keychain or Android Keystore via Expo SecureStore).
 
 ### Step 3: Update the Web Dashboard
+
 1. Open your self-hosted **Web Dashboard Control Panel** URL in your web browser.
 2. In the top-right header, enter the new **Shared E2EE Passkey** into the key field.
 3. The dashboard will immediately utilize this new key to decrypt incoming Firestore coordinates and correctly render marker pins on the map.

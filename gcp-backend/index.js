@@ -87,6 +87,31 @@ functions.http('locations', async (req, res) => {
       }
     }
 
+    // 2. Secure Centralized Cloud Logging Proxy (POST request with type === 'log')
+    if (req.method === 'POST' && req.body && req.body.type === 'log') {
+      const { deviceName, platform, severity, message, timestamp } = req.body;
+      if (!message) {
+        return res.status(400).json({ error: 'Message field is required for logging.' });
+      }
+
+      const cleanDevice = sanitizeKey(deviceName) || 'UnknownDevice';
+
+      // Assemble structured log payload in Google Cloud standard format
+      const logPayload = {
+        message: `[${cleanDevice}] ${message}`,
+        severity: severity || 'INFO',
+        deviceName: cleanDevice,
+        platform: platform || 'unknown',
+        timestamp: timestamp || new Date().toISOString(),
+        serviceContext: { service: 'wheres-my-family-client' },
+      };
+
+      // Printing structured JSON to stdout is parsed natively by Google Cloud Logging
+      console.log(JSON.stringify(logPayload));
+
+      return res.status(201).json({ status: 'success' });
+    }
+
     if (req.method === 'GET') {
       const snapshot = await collectionRef.get();
       const responseData = {};
