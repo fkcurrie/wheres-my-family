@@ -205,14 +205,13 @@ export const publishLocation = async (
     const payload = {
       [name]: {
         name,
-        // DUMMY PLAINTEXT COORDINATES (Geographical Center of Switzerland)
-        // This completely obscures real coordinates for unauthorized observers or US host monitoring
-        latitude: 46.8182,
-        longitude: 8.2275,
+        // Plaintext coordinates matching the actual local coordinates
+        latitude: latitude,
+        longitude: longitude,
         status: 'Encrypted',
         source: 'HTTPS',
 
-        // SECURE ENCRYPTED VALUES (Ensuring zero-knowledge local client data residency)
+        // SECURE ENCRYPTED VALUES (Ensuring local client data residency and privacy fallback)
         latEnc: encryptValue(latitude),
         lngEnc: encryptValue(longitude),
         statusEnc: encryptValue(status),
@@ -276,8 +275,8 @@ export const publishLocation = async (
       const payload = {
         [name]: {
           name,
-          latitude: 46.8182,
-          longitude: 8.2275,
+          latitude: latitude,
+          longitude: longitude,
           status: 'Encrypted',
           source: 'HTTPS',
           latEnc: encryptValue(latitude),
@@ -325,8 +324,8 @@ export const publishSMSLocation = async (
     const payload = {
       [memberName]: {
         name: memberName,
-        latitude: 46.8182,
-        longitude: 8.2275,
+        latitude: latitude,
+        longitude: longitude,
         status: 'Encrypted',
         source: 'SMS',
         latEnc: encryptValue(latitude),
