@@ -1,3 +1,6 @@
+WhatsNew in Where's my family!! (v1.0.28)
+- Added secure, zero-knowledge Centralized Cloud Logging to stream real-time device diagnostics directly to Google Cloud Logging, utilizing the generous GCP free tier (50 GB/month).
+- Implemented robust client-side regex coordinate masking to scrub decimal GPS strings from all remote diagnostics, enforcing complete end-to-end data privacy.
 - Fixed a critical location fallback bug where locked devices would revert to showing Giswil, Switzerland on the family dashboard due to SecureStore keychain accessibility limits. Changed access permissions to allow reading the End-to-End Encryption (E2EE) key during background tracking.
 - Added a high-reliability global crypto polyfill in index.ts to prevent CryptoJS from failing during secure random number generation in Expo and native environments.
 - Fully verified location synchronization, positioning Dad perfectly in Peterborough, Ontario, Canada on both the emulator and the live database.
