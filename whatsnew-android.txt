@@ -1,3 +1,3 @@
-• Added beautiful expandable fullscreen map mode on tap with custom glassmorphic overlay controls.
-• Re-aligned header controls and increased tap targets to clear modern screen notches and pinholes (e.g. Pixel 9).
-• Fixed background-task encryption context initialization to resolve the Switzerland / Giswil fallback coordinate bug.
+- Fixed a critical location fallback bug where locked devices would revert to showing Giswil, Switzerland on the family dashboard due to SecureStore keychain accessibility limits. Changed access permissions to allow reading the End-to-End Encryption (E2EE) key during background tracking.
+- Added a high-reliability global crypto polyfill in index.ts to prevent CryptoJS from failing during secure random number generation in Expo and native environments.
+- Fully verified location synchronization, positioning Dad perfectly in Peterborough, Ontario, Canada on both the emulator and the live database.
