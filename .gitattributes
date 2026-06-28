@@ -4,6 +4,7 @@
 # Enforce LF on bash and PowerShell scripts so they execute correctly on Linux/macOS
 *.sh text eol=lf
 *.ps1 text eol=lf
+gradlew text eol=lf
 
 # Enforce CRLF on Windows batch files
 *.bat text eol=crlf

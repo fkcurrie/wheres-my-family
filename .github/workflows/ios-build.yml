@@ -19,8 +19,11 @@ jobs:
           xcode-version: '16.0'
 
       - name: Install xcodegen and Generate Project
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
-          brew install xcodegen
+          which xcodegen || brew install xcodegen
           cd wheres-my-family-ios
           xcodegen generate
 
