@@ -22,6 +22,11 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Install Android SDK Platform 36
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36"
+
       - name: Decode Android Keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > wheres-my-family-android/app/release.keystore
