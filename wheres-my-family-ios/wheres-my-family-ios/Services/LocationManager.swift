@@ -122,7 +122,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             "battery": batteryLevel,
             "is_charging": isCharging,
             "accuracy": Int(location.horizontalAccuracy),
-            "timestamp": Int64(location.timestamp.timeIntervalSince1971 * 1000)
+            "timestamp": Int64(location.timestamp.timeIntervalSince1970 * 1000)
         ]
         
         var request = URLRequest(url: backendUrl)
