@@ -106,6 +106,8 @@ export const fetchMantleDB = async () => {
         if (decLat !== null && decLng !== null) {
           m.latitude = decLat;
           m.longitude = decLng;
+        } else {
+          m.decryptionFailed = true;
         }
         if (m.statusEnc) {
           const decStatus = decryptValue<string>(m.statusEnc);

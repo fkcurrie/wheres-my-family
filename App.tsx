@@ -1097,6 +1097,13 @@ export default function App() {
 
   // Pan and center map to show selected family member
   const handleMemberPress = useCallback((member: FamilyMember) => {
+    if (member.decryptionFailed) {
+      Alert.alert(
+        '⚠️ E2EE Key Mismatch',
+        `Cannot pan to encrypted location of ${member.name}. Please ensure your family passkey matches theirs.`
+      );
+      return;
+    }
     if (member.latitude !== undefined && member.longitude !== undefined && mapRef.current) {
       mapRef.current.animateToRegion(
         {

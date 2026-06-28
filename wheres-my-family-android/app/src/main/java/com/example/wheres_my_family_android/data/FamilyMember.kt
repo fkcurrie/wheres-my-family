@@ -28,6 +28,8 @@ data class FamilyMember(
     val weatherTemp: Int? = null,
     val weatherEmoji: String? = null,
     val weatherDesc: String? = null,
-    val weatherIsSevere: Boolean = false
+    val weatherIsSevere: Boolean = false,
+    val decryptionFailed: Boolean = false
 )
+
 

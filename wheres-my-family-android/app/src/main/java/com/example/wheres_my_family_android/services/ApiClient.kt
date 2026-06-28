@@ -64,8 +64,12 @@ object ApiClient {
         val statusEnc = mObj["statusEnc"]?.jsonPrimitive?.content ?: ""
         val trailEnc = mObj["trailEnc"]?.jsonPrimitive?.content ?: ""
         
-        val lat = CryptoService.decryptString(latEnc, familyKey).toDoubleOrNull() ?: 46.8182
-        val lng = CryptoService.decryptString(lngEnc, familyKey).toDoubleOrNull() ?: 8.2275
+        val latDec = CryptoService.decryptString(latEnc, familyKey)
+        val lngDec = CryptoService.decryptString(lngEnc, familyKey)
+        val decryptionFailed = latEnc.isEmpty() || lngEnc.isEmpty() || latDec.isEmpty() || lngDec.isEmpty() || latDec.toDoubleOrNull() == null || lngDec.toDoubleOrNull() == null
+
+        val lat = latDec.toDoubleOrNull() ?: 46.8182
+        val lng = lngDec.toDoubleOrNull() ?: 8.2275
         val status = CryptoService.decryptString(statusEnc, familyKey).ifEmpty { "Active" }
         val battery = mObj["battery"]?.jsonPrimitive?.int ?: 100
         val charging = mObj["charging"]?.jsonPrimitive?.boolean ?: false
@@ -113,7 +117,8 @@ object ApiClient {
           weatherTemp = weatherTemp,
           weatherEmoji = weatherEmoji,
           weatherDesc = weatherDesc,
-          weatherIsSevere = weatherIsSevere
+          weatherIsSevere = weatherIsSevere,
+          decryptionFailed = decryptionFailed
         ))
       }
     } catch (e: Exception) {

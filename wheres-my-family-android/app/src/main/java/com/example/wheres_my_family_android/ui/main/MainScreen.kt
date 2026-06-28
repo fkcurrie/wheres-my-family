@@ -230,11 +230,27 @@ fun MainScreen(
                     ) {
                         // Drawing markers and routes for family members
                         uiState.familyMembers.forEach { member ->
-                            Marker(
+                            MarkerComposable(
                                 state = rememberMarkerState(position = LatLng(member.latitude, member.longitude)),
                                 title = member.name,
-                                snippet = "${member.status} | Battery: ${member.battery}%"
-                            )
+                                snippet = if (member.decryptionFailed) "E2EE Key Mismatch" else "${member.status} | Battery: ${member.battery}%"
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(member.color)))
+                                        .border(2.dp, Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = member.name.take(1).uppercase(),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
 
                             // Historical polyline trails
                             if (showTrails && member.trail.isNotEmpty()) {
@@ -428,13 +444,17 @@ fun MainScreen(
                                 FamilyCard(
                                     member = member,
                                     onCardClick = {
-                                        coroutineScope.launch {
-                                            cameraPositionState.animate(
-                                                CameraUpdateFactory.newLatLngZoom(
-                                                    LatLng(member.latitude, member.longitude),
-                                                    14f
+                                        if (member.decryptionFailed) {
+                                            Toast.makeText(context, "⚠️ E2EE Key Mismatch: Cannot pan to encrypted location of ${member.name}", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            coroutineScope.launch {
+                                                cameraPositionState.animate(
+                                                    CameraUpdateFactory.newLatLngZoom(
+                                                        LatLng(member.latitude, member.longitude),
+                                                        14f
+                                                    )
                                                 )
-                                            )
+                                            }
                                         }
                                     },
                                     onNudge = { viewModel.requestNudge(member) },
@@ -713,11 +733,20 @@ fun FamilyCard(
                                 .background(Color(0xFF10B981))
                         )
                     }
-                    Text(
-                        member.status,
-                        fontSize = 12.sp,
-                        color = Color(0xFF94A3B8)
-                    )
+                    if (member.decryptionFailed) {
+                        Text(
+                            "⚠️ E2EE Key Mismatch",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFEF4444)
+                        )
+                    } else {
+                        Text(
+                            member.status,
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 2.dp)

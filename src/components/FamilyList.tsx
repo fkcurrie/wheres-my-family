@@ -183,7 +183,13 @@ const FamilyMemberCard = React.memo(
                     {member.deviceStatus || 'Active'}
                   </Text>
                   <Text style={{ color: '#475569', fontSize: 11 }}>•</Text>
-                  <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
+                  {member.decryptionFailed ? (
+                    <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '700' }}>
+                      ⚠️ E2EE Key Mismatch
+                    </Text>
+                  ) : (
+                    <Text style={{ color: '#94a3b8', fontSize: 12 }}>{member.status}</Text>
+                  )}
                 </View>
               </View>
             </View>
@@ -245,6 +251,7 @@ const FamilyMemberCard = React.memo(
       prev.member.id === next.member.id &&
       prev.member.name === next.member.name &&
       prev.member.status === next.member.status &&
+      prev.member.decryptionFailed === next.member.decryptionFailed &&
       prev.member.battery === next.member.battery &&
       prev.member.charging === next.member.charging &&
       prev.member.deviceStatus === next.member.deviceStatus &&

@@ -1,3 +1,2 @@
-• Resolved a critical startup crash affecting Android devices running API levels below 26 (Android 8.0) by switching to a fully backward-compatible Base64 cryptographic encoder/decoder.
-• Fixed a Google Maps initialization exception by dynamically injecting the map API key via Manifest Placeholders.
-• Improved app stability and startup sequence on all supported Android versions.
+• Fixed a critical map camera bug where clicking on a family member's card panned to Switzerland if decryption failed due to a key mismatch. Introduced explicit "⚠️ E2EE Key Mismatch" warning badges on cards and a clear Toast/Alert when clicked.
+• Upgraded map markers to display beautiful, highly distinguishable colored badges containing each member's uppercase initial, matching their cards perfectly and resolving duplicate pins.
