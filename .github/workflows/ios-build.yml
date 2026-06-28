@@ -19,11 +19,11 @@ jobs:
           xcode-version: '16.0'
 
       - name: Install xcodegen and Generate Project
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
-          which xcodegen || brew install xcodegen
+          mkdir -p $HOME/xcodegen
+          curl -L -f https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o $HOME/xcodegen.zip
+          unzip $HOME/xcodegen.zip -d $HOME/xcodegen/
+          export PATH="$HOME/xcodegen/xcodegen/bin:$PATH"
           cd wheres-my-family-ios
           xcodegen generate
 
