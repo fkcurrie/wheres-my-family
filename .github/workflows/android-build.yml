@@ -29,6 +29,7 @@ jobs:
       - name: Compile Release Bundle (AAB)
         run: |
           cd wheres-my-family-android
+          chmod +x gradlew
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/wheres-my-family-android/app/release.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \

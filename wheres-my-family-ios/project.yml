@@ -1,0 +1,21 @@
+name: wheres-my-family-ios
+options:
+  bundleIdPrefix: com.example
+targets:
+  wheres-my-family-ios:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - wheres-my-family-ios
+    info:
+      plist:
+        NSLocationWhenInUseUsageDescription: "This app requires access to your location to share with your family."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "This app requires background location access to keep your family updated on your whereabouts."
+        UIBackgroundModes:
+          - location
+    settings:
+      DEVELOPMENT_TEAM: LSV2MNUNZ8
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.wheresmyfamilyios
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "Apple Distribution"
