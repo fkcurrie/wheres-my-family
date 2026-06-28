@@ -42,6 +42,11 @@ These rules define guidelines, constraints, and instructions for all AI agents w
   - `Emulator` (pixel emulator running on this system)
 - Any testing, diagnostic, or development scripts/interactions must only read, update, or reference these three accounts. No custom, temporary, or dynamic test usernames (such as `'Test User'`, `'rwltza'`, etc.) are allowed.
 
+### 7. Headless Emulator Integration (HEI)
+- Always stop the Android emulator (`Pixel_9`) when it is no longer needed to conserve system CPU, memory, and cooling resources.
+- Only launch the emulator (`android emulator start Pixel_9`) when active testing or local verification explicitly requires it.
+- Once testing is completed, immediately terminate the emulator using `android emulator stop Pixel_9` before ending your turn.
+
 ---
 
 ## ⚙️ Development & Verification Workflows
