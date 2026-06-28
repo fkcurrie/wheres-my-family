@@ -9,6 +9,7 @@ targets:
     info:
       path: wheres-my-family-ios/Info.plist
       plist:
+        CFBundleIconName: AppIcon
         NSLocationWhenInUseUsageDescription: "This app requires access to your location to share with your family."
         NSLocationAlwaysAndWhenInUseUsageDescription: "This app requires background location access to keep your family updated on your whereabouts."
         UIBackgroundModes:
@@ -18,3 +19,5 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: ca.sfle.wheresmyfamily
       CODE_SIGN_STYLE: Manual
       CODE_SIGN_IDENTITY: "Apple Distribution"
+      MARKETING_VERSION: "2.0.0"
+      CURRENT_PROJECT_VERSION: "202"
