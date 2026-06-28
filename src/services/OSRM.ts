@@ -290,7 +290,12 @@ export const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoor
   const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
 
   try {
-    const response = await fetch(routeUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(routeUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const data = await response.json();
 
     if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
@@ -316,7 +321,12 @@ export const fetchSnappedTrail = async (points: TrailCoord[]): Promise<TrailCoor
   // 2. Fallback to OSRM Map-Matching API if routing fails (or is unavailable)
   const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordsString}?overview=full&geometries=geojson`;
   try {
-    const response = await fetch(matchUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(matchUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const data = await response.json();
 
     if (data && data.code === 'Ok' && data.matchings && data.matchings[0]) {

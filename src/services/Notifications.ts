@@ -108,7 +108,6 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
           await addDiagnosticLog(`[Background Ping Error] Failed: ${err.message || String(err)}`);
           // Clear pingRequested anyway to prevent infinite loops
           const clearedUser = {
-            ...userData,
             pingRequested: false,
           };
           await fetch(MANTLE_DB_URL, {
@@ -150,7 +149,6 @@ export const checkAndHandleNudge = async (savedName: string): Promise<boolean> =
 
         // Clear the nudgeRequested state in DB immediately
         const clearedUser = {
-          ...data[savedName],
           nudgeRequested: false,
         };
         await fetch(MANTLE_DB_URL, {

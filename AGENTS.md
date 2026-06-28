@@ -60,6 +60,17 @@ To trigger an autonomous loop while pair programming, ask me to:
 
 ---
 
+## 🛡️ Strict Authorized User Accounts Only (Database Integrity)
+
+- **Do NOT create any new user accounts or members in the locations collection.**
+- The only authorized users that should ever exist or be created are:
+  - `Dad` (physical Android device)
+  - `Apple-test` (physical iOS device)
+  - `Emulator` (pixel emulator running on this system)
+- Any testing, diagnostic, or development scripts/interactions must only read, update, or reference these three accounts. No custom, temporary, or dynamic test usernames (such as `'Test User'`, `'rwltza'`, etc.) are allowed.
+
+---
+
 ## 📦 App Store Release Notes ("What's New") Rule
 
 When compiling, building, and submitting production releases via the GitHub Actions CI/CD pipeline:

@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { X, MessageSquare, AlertTriangle, Lightbulb, Zap, HelpCircle } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addDiagnosticLog } from '../services/Logger';
 import { MANTLE_DB_URL, MANTLE_KEY } from '../services/MantleDB';
 
@@ -36,6 +37,33 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
   const [statusMessage, setStatusMessage] = useState<{ text: string; isSuccess: boolean } | null>(
     null
   );
+
+  const gatherDiagnostics = async () => {
+    try {
+      const userName = (await AsyncStorage.getItem('user_name')) || 'Not Set';
+      const trackingMode = (await AsyncStorage.getItem('tracking_mode')) || 'unknown';
+      const bgTrackingEnabled =
+        (await AsyncStorage.getItem('background_tracking_enabled')) || 'unknown';
+      const timestamp = new Date().toLocaleString();
+      const os = Platform.OS;
+      const osVersion = Platform.Version;
+
+      return `
+
+---
+### 🛠️ Background Diagnostic Details (Triage)
+| Field | Value |
+| :--- | :--- |
+| **User Account** | ${userName} |
+| **Timestamp** | ${timestamp} (local) |
+| **Platform / OS** | ${os} (Version ${osVersion}) |
+| **Active Tracking Mode** | ${trackingMode} |
+| **Background Service** | ${bgTrackingEnabled === 'true' ? 'Enabled' : 'Disabled'} |
+`;
+    } catch (err) {
+      return `\n\n---\n### 🛠️ Background Diagnostic Details (Triage)\n*Failed to gather diagnostics automatically: ${err instanceof Error ? err.message : String(err)}*`;
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim() || !details.trim()) {
@@ -61,6 +89,9 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
+      const diagnostics = await gatherDiagnostics();
+      const finalBody = `${details.trim()}${diagnostics}`;
+
       const response = await fetch(MANTLE_DB_URL, {
         method: 'POST',
         headers: {
@@ -70,7 +101,7 @@ export default function FeedbackModal({ visible, onClose }: FeedbackModalProps) 
         body: JSON.stringify({
           type: 'feedback',
           title: `[Feedback] ${title.trim()}`,
-          body: details.trim(),
+          body: finalBody,
           labels: [label],
         }),
         signal: controller.signal,

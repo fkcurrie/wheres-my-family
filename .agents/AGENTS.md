@@ -33,6 +33,15 @@ These rules define guidelines, constraints, and instructions for all AI agents w
 - **GCP Cloud Run Exclusively**: The web dashboard is hosted and executed exclusively via Google Cloud Run inside GCP project `wheres-my-family-499822` (Toronto region `northamerica-northeast2`).
 - **Vercel Decommissioned**: Vercel is 100% decommissioned and no longer used. Under no circumstances should Vercel deployment commands or configurations (`vercel.json`) be generated, modified, or executed.
 
+### 6. Strict Authorized User Accounts Only
+
+- **Do NOT create any new user accounts or members in the locations collection.**
+- The only authorized users that should ever exist or be created are:
+  - `Dad` (physical Android device)
+  - `Apple-test` (physical iOS device)
+  - `Emulator` (pixel emulator running on this system)
+- Any testing, diagnostic, or development scripts/interactions must only read, update, or reference these three accounts. No custom, temporary, or dynamic test usernames (such as `'Test User'`, `'rwltza'`, etc.) are allowed.
+
 ---
 
 ## ⚙️ Development & Verification Workflows

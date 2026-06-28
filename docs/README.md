@@ -56,6 +56,32 @@ graph TD
   - Pre-commit checklist (TS typecheck, ESLint audits, DOM testing).
 - **Start here if:** You are ready to publish build updates or want to configure automated releases.
 
+### 4. 📱 [Family Member Onboarding & Background Tracking Troubleshooting](device-troubleshooting.md)
+
+- **Who it is for:** System hosts and non-technical family members experiencing background location pauses or dropouts.
+- **What is covered:**
+  - Standard location permission settings ("Always Allow" and Precise Location).
+  - Manufacturer-specific battery savers settings (Samsung Never sleeping, Pixel Unrestricted, Xiaomi Autostart, etc.).
+  - Global Background App Refresh requirements on iOS.
+  - Built-in App Diagnostic log validation.
+
+### 5. 🔑 [Zero-Knowledge Passkey Rotation & Switzerland Fallback Guide](passkey-management.md)
+
+- **Who it is for:** Family administrators needing to rotate their shared E2EE key or resolve members displaying in Giswil, Switzerland.
+- **What is covered:**
+  - Detailed structural overview of client-side E2EE coordinate security.
+  - Step-by-step key rotation order of operations for mobile devices and dashboards.
+  - Explanation and diagnosis of E2EE key mismatches and default Giswil coordinates.
+
+### 6. 🔒 [CI/CD Repository Secrets Generation Reference](ci-secrets-reference.md)
+
+- **Who it is for:** Release developers wanting precise cross-platform commands to construct valid GitHub Actions credentials.
+- **What is covered:**
+  - Native Base64 key and profile formatting commands for macOS, Linux, and Windows PowerShell.
+  - Local validation routines utilizing `keytool` to verify string integrity.
+  - Google Play Store service account invitation checklist.
+  - Apple `.p8` PEM key formatting parameters.
+
 ---
 
 ## 🚨 Pre-Commit Quality Standards

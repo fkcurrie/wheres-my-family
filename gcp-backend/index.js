@@ -3,6 +3,7 @@ const functions = require('@google-cloud/functions-framework');
 
 const db = new Firestore();
 const MANTLE_KEY = '923929d093087ca919a1823d2d53b06950f645a7db06813fad0e0e2d623c018b';
+const ALLOWED_MEMBER_KEYS = new Set(['Dad', 'Apple-test', 'Emulator']);
 
 const sanitizeKey = (key) => {
   if (typeof key !== 'string') return '';
@@ -87,7 +88,71 @@ functions.http('locations', async (req, res) => {
       }
     }
 
+    // 2. Secure Centralized Cloud Logging Proxy (POST request with type === 'log')
+    if (req.method === 'POST' && req.body && req.body.type === 'log') {
+      const { deviceName, platform, severity, message, timestamp } = req.body;
+      if (!message) {
+        return res.status(400).json({ error: 'Message field is required for logging.' });
+      }
+
+      const cleanDevice = sanitizeKey(deviceName) || 'UnknownDevice';
+
+      // Assemble structured log payload in Google Cloud standard format
+      const logPayload = {
+        message: `[${cleanDevice}] ${message}`,
+        severity: severity || 'INFO',
+        deviceName: cleanDevice,
+        platform: platform || 'unknown',
+        timestamp: timestamp || new Date().toISOString(),
+        serviceContext: { service: 'wheres-my-family-client' },
+      };
+
+      // Printing structured JSON to stdout is parsed natively by Google Cloud Logging
+      console.log(JSON.stringify(logPayload));
+
+      // Also save to Firestore 'logs' collection for real-time dashboard stream
+      try {
+        await db.collection('logs').add(logPayload);
+
+        // Keep Firestore collection size small by deleting logs older than 48 hours (5% chance per request to save operations)
+        if (Math.random() < 0.05) {
+          const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+          const oldLogs = await db.collection('logs')
+            .where('timestamp', '<', cutoff)
+            .limit(50)
+            .get();
+          if (!oldLogs.empty) {
+            const batch = db.batch();
+            oldLogs.forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
+          }
+        }
+      } catch (dbErr) {
+        console.error('[Cloud Function DB Log Error]:', dbErr);
+      }
+
+      return res.status(201).json({ status: 'success' });
+    }
+
     if (req.method === 'GET') {
+      // Return live error logs stream if requested
+      if (req.query.type === 'logs') {
+        try {
+          const logsSnapshot = await db.collection('logs')
+            .orderBy('timestamp', 'desc')
+            .limit(100)
+            .get();
+          const logsData = [];
+          logsSnapshot.forEach((doc) => {
+            logsData.push({ id: doc.id, ...doc.data() });
+          });
+          return res.status(200).json(logsData);
+        } catch (logsErr) {
+          console.error('[Cloud Function Fetch Logs Error]:', logsErr);
+          return res.status(500).json({ error: 'Failed fetching log stream', details: logsErr.message });
+        }
+      }
+
       const snapshot = await collectionRef.get();
       const responseData = {};
       snapshot.forEach((doc) => {
@@ -102,7 +167,7 @@ functions.http('locations', async (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON payload' });
       }
 
-      // Perform Batch updates / deletes with key path traversal sanitization
+      // Perform Batch updates / deletes with key path traversal sanitization and member account validation
       const batch = db.batch();
       for (const key of Object.keys(updatePayload)) {
         const cleanKey = sanitizeKey(key);
@@ -110,6 +175,14 @@ functions.http('locations', async (req, res) => {
         if (!cleanKey) {
           console.warn(
             `[GCP Backend Path Traversal Injection Blocked]: Bypassing unsafe key: "${key}"`
+          );
+          continue;
+        }
+
+        // Restrict document creation and updates exclusively to approved member profiles
+        if (!ALLOWED_MEMBER_KEYS.has(cleanKey)) {
+          console.warn(
+            `[GCP Backend Unauthorized Member Blocked]: Bypassing unapproved member key: "${cleanKey}"`
           );
           continue;
         }
