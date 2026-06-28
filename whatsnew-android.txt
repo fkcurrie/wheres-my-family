@@ -1,8 +1,4 @@
-• Added beautiful expandable fullscreen map mode on tap with custom glassmorphic overlay controls.
-• Re-aligned header controls and increased tap targets to clear modern screen notches and pinholes (e.g. Pixel 9).
-• Fixed background-task encryption context initialization to resolve the Switzerland / Giswil fallback coordinate bug.
-• Fixed memory-allocation crash (OutOfMemoryError) when entering fullscreen map mode.
-• Fixed version and build sequence numbers to v1.0.29 (build 29) for flawless Play Console rollout.
-• Cleaned Firestore records to enforce strict authorized user accounts (Dad, Apple-test, Emulator) and secure real-time tracking privacy.
-• Resolved the Google Cloud feedback payload submission issue, restoring fully functional bug reporting capabilities.
-• Installed active pipeline tracking and automated build monitor scripts for developer operations.
+• Complete modern native rewrite in Kotlin/Compose and Swift/SwiftUI.
+• Zero-Knowledge client-side E2EE coordinates privacy encryption (AES-256-CBC) to prevent plain coordinates exposure.
+• High-performance, battery-efficient background location tracking.
+• Seamless location sharing and family sync diagnostics.
