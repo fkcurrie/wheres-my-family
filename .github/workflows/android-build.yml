@@ -24,8 +24,8 @@ jobs:
 
       - name: Install Android SDK Platform 36
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-36"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
 
       - name: Decode Android Keystore
         run: |
