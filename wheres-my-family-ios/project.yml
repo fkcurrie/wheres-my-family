@@ -7,7 +7,7 @@ targets:
     platform: iOS
     deploymentTarget: "16.0"
     sources:
-      - wheres-my-family-ios
+      - path: wheres-my-family-ios
     info:
       plist:
         NSLocationWhenInUseUsageDescription: "This app requires access to your location to share with your family."
