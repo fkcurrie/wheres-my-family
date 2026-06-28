@@ -7,6 +7,7 @@ targets:
     sources:
       - wheres-my-family-ios
     info:
+      path: wheres-my-family-ios/Info.plist
       plist:
         NSLocationWhenInUseUsageDescription: "This app requires access to your location to share with your family."
         NSLocationAlwaysAndWhenInUseUsageDescription: "This app requires background location access to keep your family updated on your whereabouts."
