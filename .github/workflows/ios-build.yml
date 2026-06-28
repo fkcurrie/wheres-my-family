@@ -23,6 +23,7 @@ jobs:
           mkdir -p $HOME/xcodegen
           curl -L -f https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o $HOME/xcodegen.zip
           unzip $HOME/xcodegen.zip -d $HOME/xcodegen/
+          chmod +x $HOME/xcodegen/xcodegen/bin/xcodegen
           export PATH="$HOME/xcodegen/xcodegen/bin:$PATH"
           cd wheres-my-family-ios
           xcodegen generate
