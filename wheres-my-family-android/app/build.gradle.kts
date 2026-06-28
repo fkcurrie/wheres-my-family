@@ -11,7 +11,7 @@ android {
         applicationId = "ca.sfle.wheresmyfamily"
         minSdk = 24
         targetSdk = 36
-        versionCode = 200
+        versionCode = 201
         versionName = "2.0.0"
     }
 
