@@ -13,6 +13,10 @@ import com.example.wheres_my_family_android.theme.WheresMyFamilyAndroidTheme
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    
+    // Initialize diagnostic logger
+    com.example.wheres_my_family_android.services.DiagnosticLogger.init(applicationContext)
+    com.example.wheres_my_family_android.services.DiagnosticLogger.addDiagnosticLog("[System] Application initialized.")
 
     enableEdgeToEdge()
     setContent {

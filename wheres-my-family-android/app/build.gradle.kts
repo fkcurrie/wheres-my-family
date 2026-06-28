@@ -24,8 +24,8 @@ android {
         applicationId = "ca.sfle.wheresmyfamily"
         minSdk = 24
         targetSdk = 36
-        versionCode = 204
-        versionName = "2.0.1"
+        versionCode = 205
+        versionName = "2.0.2"
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
