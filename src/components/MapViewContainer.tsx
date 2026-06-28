@@ -310,40 +310,50 @@ export default function MapViewContainer({
       </View>
 
       <View style={styles.mapCanvas}>
-        <MapView
-          ref={mapRef}
-          style={{ width: '100%', height: '100%' }}
-          initialRegion={{
-            latitude: userCoord.latitude,
-            longitude: userCoord.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        >
-          {renderMapContent()}
-        </MapView>
+        {!isFullscreen ? (
+          <>
+            <MapView
+              ref={mapRef}
+              style={{ width: '100%', height: '100%' }}
+              initialRegion={{
+                latitude: userCoord.latitude,
+                longitude: userCoord.longitude,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+            >
+              {renderMapContent()}
+            </MapView>
 
-        {/* Center On Me Floating Button Overlay */}
-        {userLocation && (
-          <TouchableOpacity
-            style={styles.centerButton}
-            onPress={centerOnUser}
-            activeOpacity={0.7}
-            accessibilityLabel="Center on my location"
-          >
-            <Navigation color="#fff" size={20} fill="#fff" />
-          </TouchableOpacity>
+            {/* Center On Me Floating Button Overlay */}
+            {userLocation && (
+              <TouchableOpacity
+                style={styles.centerButton}
+                onPress={centerOnUser}
+                activeOpacity={0.7}
+                accessibilityLabel="Center on my location"
+              >
+                <Navigation color="#fff" size={20} fill="#fff" />
+              </TouchableOpacity>
+            )}
+
+            {/* Expand Map to Fullscreen Floating Button Overlay */}
+            <TouchableOpacity
+              style={styles.fullscreenToggleCardBtn}
+              onPress={() => setIsFullscreen(true)}
+              activeOpacity={0.7}
+              accessibilityLabel="Expand map to full screen"
+            >
+              <Maximize2 color="#fff" size={20} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
+            <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>
+              Map Expanded Fullscreen
+            </Text>
+          </View>
         )}
-
-        {/* Expand Map to Fullscreen Floating Button Overlay */}
-        <TouchableOpacity
-          style={styles.fullscreenToggleCardBtn}
-          onPress={() => setIsFullscreen(true)}
-          activeOpacity={0.7}
-          accessibilityLabel="Expand map to full screen"
-        >
-          <Maximize2 color="#fff" size={20} />
-        </TouchableOpacity>
       </View>
       <Text style={styles.mapFooter}>Real-time Map centred on your device location</Text>
 

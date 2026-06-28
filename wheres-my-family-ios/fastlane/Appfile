@@ -1,0 +1,5 @@
+app_identifier("com.example.wheresmyfamilyios")
+apple_id("frank@example.com")
+
+itc_team_id("12345678")
+team_id("AB123CD456")

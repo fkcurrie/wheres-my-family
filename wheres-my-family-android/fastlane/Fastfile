@@ -1,0 +1,23 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build and upload a new release to Google Play Store"
+  lane :deploy do
+    # Build the app bundle (.aab)
+    gradle(
+      task: 'bundle',
+      build_type: 'Release',
+      project_dir: '..'
+    )
+    
+    # Upload to Google Play Internal track as draft for review
+    upload_to_play_store(
+      track: 'internal',
+      release_status: 'draft',
+      aab: '../app/build/outputs/bundle/release/app-release.aab',
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end

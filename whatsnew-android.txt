@@ -1,3 +1,4 @@
 • Added beautiful expandable fullscreen map mode on tap with custom glassmorphic overlay controls.
 • Re-aligned header controls and increased tap targets to clear modern screen notches and pinholes (e.g. Pixel 9).
 • Fixed background-task encryption context initialization to resolve the Switzerland / Giswil fallback coordinate bug.
+• Fixed memory-allocation crash (OutOfMemoryError) when entering fullscreen map mode.

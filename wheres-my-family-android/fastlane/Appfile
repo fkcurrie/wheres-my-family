@@ -1,0 +1,2 @@
+json_key_file("../pc-api-key.json")
+package_name("com.example.wheres_my_family_android")

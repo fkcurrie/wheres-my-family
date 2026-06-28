@@ -1,0 +1,20 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and publish a new beta release to Apple TestFlight"
+  lane :beta do
+    # Sync certificates and profiles using Fastlane Match (E2E Encrypted)
+    match(type: "appstore")
+    
+    # Compile the native Swift/SwiftUI app into an IPA archive
+    build_app(
+      scheme: "wheres-my-family-ios",
+      workspace: "wheres-my-family-ios.xcworkspace"
+    )
+    
+    # Push IPA directly to Apple App Store Connect TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

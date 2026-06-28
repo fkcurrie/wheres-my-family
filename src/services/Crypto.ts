@@ -17,6 +17,14 @@ export const loadCustomFamilyKey = async (): Promise<string> => {
       const secureKey = await SecureStore.getItemAsync('custom_family_key');
       if (secureKey) {
         cachedFamilyKey = secureKey;
+        // Proactively re-save to upgrade keychainAccessible flags to AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY
+        try {
+          await SecureStore.setItemAsync('custom_family_key', secureKey, {
+            keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+          });
+        } catch (saveErr) {
+          console.warn('[Crypto] Proactive key migration error:', saveErr);
+        }
         return secureKey;
       }
 
@@ -24,7 +32,7 @@ export const loadCustomFamilyKey = async (): Promise<string> => {
       const legacyKey = await AsyncStorage.getItem('custom_family_key');
       if (legacyKey) {
         await SecureStore.setItemAsync('custom_family_key', legacyKey, {
-          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+          keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
         });
         await AsyncStorage.removeItem('custom_family_key');
         cachedFamilyKey = legacyKey;
@@ -56,7 +64,7 @@ export const setCustomFamilyKey = async (key: string): Promise<void> => {
     if (trimmed) {
       if (isSecureStoreAvailable) {
         await SecureStore.setItemAsync('custom_family_key', trimmed, {
-          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+          keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
         });
         await AsyncStorage.removeItem('custom_family_key'); // Clean legacy
       } else {
