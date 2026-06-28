@@ -1,4 +1,3 @@
-• Complete modern native rewrite in Kotlin/Compose and Swift/SwiftUI.
-• Zero-Knowledge client-side E2EE coordinates privacy encryption (AES-256-CBC) to prevent plain coordinates exposure.
-• High-performance, battery-efficient background location tracking.
-• Seamless location sharing and family sync diagnostics.
+• Resolved a critical startup crash affecting Android devices running API levels below 26 (Android 8.0) by switching to a fully backward-compatible Base64 cryptographic encoder/decoder.
+• Fixed a Google Maps initialization exception by dynamically injecting the map API key via Manifest Placeholders.
+• Improved app stability and startup sequence on all supported Android versions.

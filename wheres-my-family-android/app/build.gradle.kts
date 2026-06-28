@@ -4,6 +4,19 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+val mapsApiKey = (localProperties.getProperty("MAPS_API_KEY") as? String)
+    ?: System.getenv("MAPS_API_KEY")
+    ?: (project.findProperty("MAPS_API_KEY") as? String)
+    ?: ""
+
 android {
     namespace = "com.example.wheres_my_family_android"
     compileSdk = 36
@@ -11,8 +24,9 @@ android {
         applicationId = "ca.sfle.wheresmyfamily"
         minSdk = 24
         targetSdk = 36
-        versionCode = 203
-        versionName = "2.0.0"
+        versionCode = 204
+        versionName = "2.0.1"
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

@@ -1,6 +1,6 @@
 package com.example.wheres_my_family_android.services
 
-import java.util.Base64
+import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -93,7 +93,7 @@ object CryptoService {
       System.arraycopy(encryptedBytes, 0, saltedPayload, SALT_HEADER.size + salt.size, encryptedBytes.size)
 
       // 5. Base64 Encode
-      return Base64.getEncoder().encodeToString(saltedPayload)
+      return Base64.encodeToString(saltedPayload, Base64.NO_WRAP)
     } catch (e: Exception) {
       System.err.println("[CryptoService] Encryption failed: " + e.message)
       return ""
@@ -106,7 +106,7 @@ object CryptoService {
   fun decryptString(ciphertext: String, passphraseString: String = DEFAULT_FAMILY_KEY): String {
     if (ciphertext.isEmpty()) return ""
     try {
-      val decodedPayload = Base64.getDecoder().decode(ciphertext)
+      val decodedPayload = Base64.decode(ciphertext, Base64.DEFAULT)
 
       // Verify that payload is large enough and starts with "Salted__"
       if (decodedPayload.size >= 16 && startsWith(decodedPayload, SALT_HEADER)) {
