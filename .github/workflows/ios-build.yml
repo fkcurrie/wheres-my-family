@@ -56,7 +56,7 @@ jobs:
               <string>manual</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.example.wheresmyfamilyios</key>
+                  <key>ca.sfle.wheresmyfamily</key>
                   <string>$PROV_PROFILE_UUID</string>
               </dict>
           </dict>

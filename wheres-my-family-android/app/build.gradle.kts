@@ -8,7 +8,7 @@ android {
     namespace = "com.example.wheres_my_family_android"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.wheres_my_family_android"
+        applicationId = "ca.sfle.wheresmyfamily"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

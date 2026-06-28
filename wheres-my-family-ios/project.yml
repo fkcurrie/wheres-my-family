@@ -16,6 +16,6 @@ targets:
           - location
     settings:
       DEVELOPMENT_TEAM: LSV2MNUNZ8
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.wheresmyfamilyios
+      PRODUCT_BUNDLE_IDENTIFIER: ca.sfle.wheresmyfamily
       CODE_SIGN_STYLE: Manual
       CODE_SIGN_IDENTITY: "Apple Distribution"

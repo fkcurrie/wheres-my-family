@@ -52,7 +52,7 @@ jobs:
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.ANDROID_PLAY_STORE_JSON }}
-          packageName: com.example.wheres_my_family_android
+          packageName: ca.sfle.wheresmyfamily
           releaseFiles: wheres-my-family-android/app/build/outputs/bundle/release/app-release.aab
           tracks: internal
           whatsNewDirectory: whatsnew

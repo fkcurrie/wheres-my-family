@@ -1,4 +1,4 @@
-app_identifier("com.example.wheresmyfamilyios")
+app_identifier("ca.sfle.wheresmyfamily")
 apple_id("frank@example.com")
 
 itc_team_id("12345678")
